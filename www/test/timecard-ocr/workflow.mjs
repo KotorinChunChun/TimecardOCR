@@ -1,8 +1,12 @@
-import {validateTemplate,mapPoint,regions} from './core.mjs';
+import {validateTemplate,mapPoint,regions,rowId} from './core.mjs';
 
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const bounded=(v,min,max)=>Math.max(min,Math.min(max,v));
 function uniqueId(ids,base){const prefix=base.slice(0,34);let id=prefix,n=2;while(ids.includes(id))id=`${prefix}_${n++}`;return id;}
+function checkGridSize(t,rows,columns){
+  const [w,h]=t.size;
+  if(!Number.isInteger(rows)||rows<1||rows>Math.min(64,h)||!Number.isInteger(columns)||columns<1||columns>Math.min(24,w)||rows*columns+t.extra_regions.length>500)throw Error('行は1〜64、列は1〜24、合計500セル以内で指定してください。');
+}
 function finish(t){
   const shortest=Math.min(...t.row_edges.slice(1).map((v,i)=>v-t.row_edges[i]));
   if(t.row_paddings)t.row_paddings=t.row_edges.slice(1).map((v,i)=>Math.min(t.row_paddings[i]??t.row_padding??0,Math.max(0,Math.floor((v-t.row_edges[i]-1)/2))));
@@ -23,8 +27,7 @@ export function gridTemplate(input){
   return finish(t);
 }
 export function resizeGrid(input,rows,columns,{reset=false}={}){
-  const t=gridTemplate(input),[w,h]=t.size;
-  if(!Number.isInteger(rows)||rows<1||rows>Math.min(64,h)||!Number.isInteger(columns)||columns<1||columns>Math.min(24,w)||rows*columns+t.extra_regions.length>500)throw Error('行は1〜64、列は1〜24、合計500セル以内で指定してください。');
+  const t=gridTemplate(input),[w,h]=t.size;checkGridSize(t,rows,columns);
   if(reset||rows!==t.row_edges.length-1)t.row_edges=Array.from({length:rows+1},(_,i)=>Math.round(i*h/rows));
   if(reset||columns!==t.columns.length){
     const old=t.columns,names=new Set();
@@ -56,9 +59,8 @@ export function boxSelection(t,from,to){
   return {rows:t.row_edges.slice(1).map((y,i)=>({i,top:t.row_edges[i],bottom:y})).filter(r=>r.top<bottom&&r.bottom>top).map(r=>r.i),columns:t.columns.map((c,i)=>({i,x:c.x})).filter(c=>c.x[0]<right&&c.x[1]>left).map(c=>c.i)};
 }
 export function resizeSelectedGrid(input,rows,columns,selection={}){
-  const t=gridTemplate(input),[w,h]=t.size;
-  if(!Number.isInteger(rows)||rows<1||rows>Math.min(64,h)||!Number.isInteger(columns)||columns<1||columns>Math.min(24,w)||rows*columns+t.extra_regions.length>500)throw Error('行は1〜64、列は1〜24、合計500セル以内で指定してください。');
-  t.row_ids??=Array.from({length:t.row_edges.length-1},(_,i)=>'r'+String(i+1).padStart(2,'0'));
+  const t=gridTemplate(input),w=t.size[0];checkGridSize(t,rows,columns);
+  t.row_ids??=Array.from({length:t.row_edges.length-1},(_,i)=>rowId(t,i));
   t.row_paddings??=Array(t.row_ids.length).fill(t.row_padding);
   const clean=(indexes,count)=>{const result=[...new Set((indexes??[]).filter(i=>Number.isInteger(i)&&i>=0&&i<count))].sort((a,b)=>a-b);return result.length?result:[0];};
   let rowTargets=clean(selection.rows,t.row_ids.length).map(i=>t.row_ids[i]),colTargets=clean(selection.columns,t.columns.length).map(i=>t.columns[i].name),newRows=[],newColumns=[],cursor=0,blocked=0;

@@ -10,12 +10,18 @@ APP = ROOT / 'www/test/timecard-ocr'
 SDK_MEMBER = 'package/dist/assets/worker-entry-C9UNuyOJ.js'
 
 
+def check(condition, message):
+    # assert は python -O で消えるため、検証には使わない。
+    if not condition:
+        raise SystemExit(message)
+
+
 def sdk_adapter(data):
     source = data.decode('utf-8')
     handler = 'attachWorkerMessageHandler(createPaddleOCRWorkerMessageHandler());'
-    assert source.count(handler) == 1, '公式SDKの構造が変わりました。'
+    check(source.count(handler) == 1, '公式SDKの構造が変わりました。')
     ort_loader = 'Promise.resolve().then(function() {\n    return ort_bundle_min;\n  })'
-    assert source.count(ort_loader) == 1, '公式SDKのORT読込部が変わりました。'
+    check(source.count(ort_loader) == 1, '公式SDKのORT読込部が変わりました。')
     source = source.replace(ort_loader, "import('../onnxruntime/ort.wasm.min.mjs')")
     # OpenCVの関数生成を通常のクロージャに置換し、unsafe-evalを要求しない。
     named_start = source.index('          function createNamedFunction(name, body) {')
@@ -95,7 +101,7 @@ def recognition_archive(model, characters):
 def prepare():
     raw = APP / 'models/ppocrv5-rec.onnx'
     model = raw.read_bytes()
-    assert hashlib.sha256(model).hexdigest() == 'e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a'
+    check(hashlib.sha256(model).hexdigest() == 'e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a', '認識モデルのハッシュが一致しません。')
     data = recognition_archive(model, json.loads((APP / 'models/characters.json').read_text(encoding='utf-8')))
     target = APP / 'models/ppocrv5-rec.tar'
     if not target.is_file() or target.read_bytes() != data:

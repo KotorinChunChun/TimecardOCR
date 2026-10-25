@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
-import {validateTemplate,calibration,mapPoint,normalize,correctCell,csv,tableRows,evidenceRows,decodeCTC,regions} from '../www/test/timecard-ocr/core.mjs';
+import {validateTemplate,calibration,mapPoint,normalize,correctCell,csv,tableRows,evidenceRows,decodeCTC,regions,sha256Hex} from '../www/test/timecard-ocr/core.mjs';
 import {sqliteBytes} from '../www/test/timecard-ocr/storage.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const original=JSON.parse(fs.readFileSync(path.join(root,'tools/timecard-ocr/templates/sample_timecard.json'),'utf8'));
@@ -34,6 +34,17 @@ test('理由と照合チェックは任意で、原文・履歴・日付保留�
 test('確認済みでも不正時刻・OCR未処理を勝手に解除しない',()=>{
   const c={raw:'',value:'',kind:'time',confidence:0,flags:['not_processed'],history:[]};correctCell(c,'25:00','手動転記',true);assert.ok(c.flags.includes('not_processed'));assert.ok(c.flags.includes('invalid_time'));
 });
+test('未処理セルの未照合修正でもフラグを重複させず、用紙の信頼度しきい値で判定する',()=>{
+  const c={raw:'',value:'',kind:'time',confidence:0,flags:['not_processed'],history:[]};correctCell(c,'8:30');assert.equal(c.flags.filter(f=>f==='not_processed').length,1);assert.equal(c.history[0].new_flags.filter(f=>f==='not_processed').length,1);
+  const d={raw:'8:30',value:'8:30',kind:'time',confidence:.7,flags:[],history:[]};correctCell(d,'8:31','',false,.5);assert.deepEqual(d.flags,[]);correctCell(d,'8:32');assert.deepEqual(d.flags,['low_confidence']);
+});
+test('追加領域IDは行IDを含むセルIDと衝突させない',()=>{
+  const base={size:[100,100],row_edges:[0,50,100],row_ids:['first','second'],columns:[{name:'arrival',x:[0,100],kind:'time'}]};
+  assert.throws(()=>validateTemplate({...base,extra_regions:[{id:'second_arrival',bbox:[0,0,10,10]}]}),/追加領域ID/);
+  assert.equal(validateTemplate({...base,extra_regions:[{id:'r02_arrival',bbox:[0,0,10,10]}]}).extra_regions.length,1);
+  assert.deepEqual(regions(validateTemplate(base)).map(r=>r.id),['first_arrival','second_arrival']);
+});
+test('SHA-256を小文字16進で返す',async()=>{assert.equal(await sha256Hex(new TextEncoder().encode('abc')),'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');});
 test('CSVはBOM・CRLF・引用符・改行と数式保護を維持',()=>{
   const out=csv([['=1+1',' +cmd','@data','-20','a"b','日本語\n複数行']]);assert.ok(out.startsWith('\ufeff'));assert.ok(out.includes('"\'=1+1"'));assert.ok(out.includes('"\' +cmd"'));assert.ok(out.includes('"a""b"'));assert.ok(out.endsWith('\r\n'));assert.ok(out.includes('日本語\n複数行'));
 });

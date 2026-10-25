@@ -5,6 +5,9 @@ export const rowLabel=(t,i)=>t.row_labels?.[i]?.trim()||`${t.header_rows?.includ
 export const FLAG_LABELS = {missing_or_blank:'空欄・未認識',low_confidence:'低信頼度',invalid_time:'時刻形式を確認',cross_month_date_unresolved:'年月日未確定',variant_disagreement:'青除去候補と相違',manual_review:'目視確認',not_processed:'未処理'};
 const int = (v,min,max) => Number.isInteger(v) && v >= min && v <= max;
 const finite = v => typeof v === 'number' && Number.isFinite(v);
+const IDENTIFIER=/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/,KINDS=['day','time','duration','text'];
+export const rowId=(t,i)=>t.row_ids?.[i]??'r'+String(i+1).padStart(2,'0');
+export async function sha256Hex(data){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),b=>b.toString(16).padStart(2,'0')).join('');}
 export function validateTemplate(input) {
   const t=JSON.parse(JSON.stringify(input));
   if(!Array.isArray(t.size)||t.size.length!==2||!t.size.every(v=>int(v,32,3200))||t.size[0]*t.size[1]>8000000) throw Error('補正サイズは32〜3200px、800万画素以内にしてください。');
@@ -14,17 +17,17 @@ export function validateTemplate(input) {
   if(!Array.isArray(t.columns)||!t.columns.length||t.columns.length>24) throw Error('列は1〜24件にしてください。');
   const names=new Set();
   for(const c of t.columns){
-    if(typeof c.name!=='string'||! /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(c.name)||names.has(c.name)) throw Error('列名は重複しない英数字・アンダースコアにしてください。');
+    if(typeof c.name!=='string'||!IDENTIFIER.test(c.name)||names.has(c.name)) throw Error('列名は重複しない英数字・アンダースコアにしてください。');
     if(c.label==='出勤印')c.label='出勤日';if(c.label==='退勤印')c.label='退勤日';
     names.add(c.name);c.kind??='text';c.direction??='horizontal';
     if(c.rotation_degrees!==undefined&&(!finite(c.rotation_degrees)||Math.abs(c.rotation_degrees)>180))throw Error('列の回転角度は−180〜180度にしてください。');
     if(c.label!==undefined&&(typeof c.label!=='string'||c.label.length>80))throw Error('列の見出し名は80文字以内で指定してください。');
-    if(!Array.isArray(c.x)||c.x.length!==2||!c.x.every(x=>int(x,0,w))||c.x[0]>=c.x[1]||!['day','time','duration','text'].includes(c.kind)||!direction(c.direction)) throw Error('列範囲・種類・方向が不正です。');
+    if(!Array.isArray(c.x)||c.x.length!==2||!c.x.every(x=>int(x,0,w))||c.x[0]>=c.x[1]||!KINDS.includes(c.kind)||!direction(c.direction)) throw Error('列範囲・種類・方向が不正です。');
     if(t.layout_version===2&&(!finite(c.x1)||!finite(c.x2)||c.x1<0||c.x2>1||c.x1>=c.x2||Math.abs(c.x1*w-c.x[0])>1||Math.abs(c.x2*w-c.x[1])>1))throw Error('列のX1・X2は画像全幅に対する0〜1の割合で指定してください。');
   }
   for(const [key,count]of [['header_rows',t.row_edges.length-1],['header_columns',t.columns.length]])if(t[key]!==undefined&&(!Array.isArray(t[key])||t[key].some(v=>!int(v,0,count-1))||new Set(t[key]).size!==t[key].length))throw Error('見出し行・列の指定が不正です。');
   if(t.row_labels!==undefined&&(!Array.isArray(t.row_labels)||t.row_labels.length!==t.row_edges.length-1||t.row_labels.some(v=>typeof v!=='string'||v.length>80)))throw Error('行の見出し名は行数と同じ件数、80文字以内で指定してください。');
-  if(t.row_ids!==undefined&&(!Array.isArray(t.row_ids)||t.row_ids.length!==t.row_edges.length-1||new Set(t.row_ids).size!==t.row_ids.length||t.row_ids.some(v=>typeof v!=='string'||! /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(v))))throw Error('行IDは重複しない英数字で行数と同じ件数を指定してください。');
+  if(t.row_ids!==undefined&&(!Array.isArray(t.row_ids)||t.row_ids.length!==t.row_edges.length-1||new Set(t.row_ids).size!==t.row_ids.length||t.row_ids.some(v=>typeof v!=='string'||!IDENTIFIER.test(v))))throw Error('行IDは重複しない英数字で行数と同じ件数を指定してください。');
   t.row_padding??=5;t.confidence_threshold??=.9;
   if(t.row_paddings!==undefined&&(!Array.isArray(t.row_paddings)||t.row_paddings.length!==t.row_edges.length-1||t.row_paddings.some(v=>!int(v,0,40))))throw Error('行ごとの余白指定が不正です。');
   t.blue_hue??=[75,125];t.blue_saturation??=45;
@@ -33,12 +36,12 @@ export function validateTemplate(input) {
   if(!int(t.row_padding,0,40)||t.row_edges.some((v,i,a)=>i&&v-a[i-1]<=2*(t.row_paddings?.[i-1]??t.row_padding))||!finite(t.confidence_threshold)||t.confidence_threshold<0||t.confidence_threshold>1) throw Error('行の余白または信頼度の設定が不正です。');
   t.extra_regions??=[];
   if(!Array.isArray(t.extra_regions)||t.extra_regions.length>40) throw Error('追加領域が多すぎます。');
-  const ids=new Set();
+  const ids=new Set(),cellIds=new Set(t.columns.flatMap(c=>t.row_edges.slice(1).map((_,i)=>`${rowId(t,i)}_${c.name}`)));
   for(const r of t.extra_regions){
-    if(typeof r.id!=='string'||! /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(r.id)||ids.has(r.id)||t.columns.some(c=>Array.from({length:t.row_edges.length-1},(_,i)=>`${t.row_ids?.[i]??'r'+String(i+1).padStart(2,'0')}_${c.name}`).includes(r.id))) throw Error('追加領域IDが不正です。');
+    if(typeof r.id!=='string'||!IDENTIFIER.test(r.id)||ids.has(r.id)||cellIds.has(r.id)) throw Error('追加領域IDが不正です。');
     ids.add(r.id);r.kind??='text';r.direction??='horizontal';r.column_name??=r.id;
     if(r.rotation_degrees!==undefined&&(!finite(r.rotation_degrees)||Math.abs(r.rotation_degrees)>180))throw Error('追加領域の回転角度が不正です。');
-    if(!Array.isArray(r.bbox)||r.bbox.length!==4||!r.bbox.every(v=>int(v,0,32000))||r.bbox[0]>=r.bbox[2]||r.bbox[1]>=r.bbox[3]||!direction(r.direction)||!['day','time','duration','text'].includes(r.kind)||!['original_image',undefined].includes(r.source)) throw Error('追加領域が不正です。');
+    if(!Array.isArray(r.bbox)||r.bbox.length!==4||!r.bbox.every(v=>int(v,0,32000))||r.bbox[0]>=r.bbox[2]||r.bbox[1]>=r.bbox[3]||!direction(r.direction)||!KINDS.includes(r.kind)||!['original_image',undefined].includes(r.source)) throw Error('追加領域が不正です。');
     if(r.source!=='original_image'&&(r.bbox[2]>w||r.bbox[3]>h)) throw Error('追加領域が補正画像の外にあります。');
   }
   if((t.row_edges.length-1)*t.columns.length+t.extra_regions.length>500) throw Error('一度に読み取るセルは500件以内にしてください。');
@@ -71,7 +74,10 @@ export function calibration(points,method,width,height,size){
 }
 export function regions(t){
   const result=[];
-  t.row_edges.slice(1).forEach((bottom,i)=>t.columns.forEach((c,j)=>result.push({id:`${t.row_ids?.[i]??'r'+String(i+1).padStart(2,'0')}_${c.name}`,row_index:i+1,column_index:j,column_name:c.name,is_header_row:!!t.header_rows?.includes(i),is_header_column:!!t.header_columns?.includes(j),kind:t.header_rows?.includes(i)?'text':c.kind,direction:t.header_rows?.includes(i)?'horizontal':c.direction,rotation_degrees:t.header_rows?.includes(i)?0:c.rotation_degrees??0,bbox:[c.x[0],t.row_edges[i]+(t.row_paddings?.[i]??t.row_padding),c.x[1],bottom-(t.row_paddings?.[i]??t.row_padding)]})));
+  t.row_edges.slice(1).forEach((bottom,i)=>{
+    const header=!!t.header_rows?.includes(i),padding=t.row_paddings?.[i]??t.row_padding;
+    t.columns.forEach((c,j)=>result.push({id:`${rowId(t,i)}_${c.name}`,row_index:i+1,column_index:j,column_name:c.name,is_header_row:header,is_header_column:!!t.header_columns?.includes(j),kind:header?'text':c.kind,direction:header?'horizontal':c.direction,rotation_degrees:header?0:c.rotation_degrees??0,bbox:[c.x[0],t.row_edges[i]+padding,c.x[1],bottom-padding]}));
+  });
   return result.concat(t.extra_regions.map(r=>({...r,row_index:0})));
 }
 export function normalize(raw,kind,confidence,threshold=.9){
@@ -81,13 +87,13 @@ export function normalize(raw,kind,confidence,threshold=.9){
   if(kind==='day')flags.push('cross_month_date_unresolved');if(kind==='text')flags.push('manual_review');
   return {value,flags};
 }
-export function correctCell(cell,value,reason='',reviewed=false){
+export function correctCell(cell,value,reason='',reviewed=false,threshold){
   const previous=cell.value,oldFlags=[...cell.flags];
   cell.value=String(value);cell.reviewed=!!reviewed;
-  const checks=normalize(cell.value,cell.kind,cell.confidence).flags;
-  cell.flags=reviewed?checks.filter(f=>f==='cross_month_date_unresolved'||f==='invalid_time'):Array.from(new Set([...oldFlags,...checks]));
+  const checks=normalize(cell.value,cell.kind,cell.confidence,threshold).flags,flags=reviewed?checks.filter(f=>f==='cross_month_date_unresolved'||f==='invalid_time'):[...oldFlags,...checks];
   // 未処理セルを確認済みにしても、OCRを実行したことにはしない。
-  if(oldFlags.includes('not_processed'))cell.flags.push('not_processed');
+  if(oldFlags.includes('not_processed'))flags.push('not_processed');
+  cell.flags=[...new Set(flags)];
   cell.history??=[];cell.history.push({at:new Date().toISOString(),old_value:previous,new_value:cell.value,reason:reason.trim(),reviewed:!!reviewed,old_flags:oldFlags,new_flags:[...cell.flags]});
   return cell;
 }

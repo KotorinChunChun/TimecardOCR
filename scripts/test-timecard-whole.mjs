@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {mapWholeResult,recognizeWholeImage} from '../www/test/timecard-ocr/whole-result.mjs';
 import {inferenceThreads} from '../www/test/timecard-ocr/ocr-prep.mjs';
 import vm from 'node:vm';
+import {imageEvidence} from '../www/test/timecard-ocr/imaging.mjs';
 import {webcrypto,createHash} from 'node:crypto';
 const slots=[{id:'a',x:48,y:48,width:100,height:100},{id:'b',x:196,y:48,width:100,height:100},{id:'blank',x:48,y:196,width:100,height:100}];
 const line=(text,x,y,score=.9)=>({text,score,poly:[[x,y],[x+30,y],[x+30,y+14],[x,y+14]]});
@@ -43,4 +44,9 @@ test('モデルを保持したまま変更されたSDKキャッシュだけを�
   vm.runInNewContext(readFileSync(new URL('../www/test/timecard-ocr/sw.js',import.meta.url),'utf8'),{self,URL,Headers,Response,Request,crypto:webcrypto,caches:{open:async name=>name.includes('-assets-')?assetCache:shell}});
   let activation;handlers.activate({waitUntil:p=>activation=p});await activation;assert.equal(claimed,true);assert.equal(await saved.get(base+files[0].path).text(),'model');assert.equal(saved.has(base+files[1].path),false);
   let response;handlers.fetch({request:{method:'GET',url:base+'ocr-worker.mjs',mode:'cors'},respondWith:p=>response=p});const policy=(await response).headers.get('Content-Security-Policy');assert.ok(policy.includes("'wasm-unsafe-eval'"));assert.ok(!policy.includes("'unsafe-eval'"));
+});
+
+test('使用中の画像照合APIを保持し、共通SHAヘルパーで原色画素の証跡を返す',async()=>{
+  const data=new Uint8ClampedArray([245,239,210,255,30,70,90,255]),image={width:2,height:1,id:'atlas-canvas',getContext:()=>({getImageData:()=>({data})})};
+  const evidence=await imageEvidence(image);assert.equal(evidence.sha256,createHash('sha256').update(data).digest('hex'));assert.equal(evidence.width,2);assert.equal(evidence.height,1);assert.equal(evidence.colorPixels,2);assert.equal(evidence.canvasId,'atlas-canvas');
 });

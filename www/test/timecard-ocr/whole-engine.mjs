@@ -1,3 +1,4 @@
+import {sha256Hex} from './core.mjs';
 import {OcrPipelineRunner,sourcePayloadToMat} from './vendor/paddleocr/whole-pipeline.mjs';
 import {inferenceThreads} from './ocr-prep.mjs';
 
@@ -7,7 +8,7 @@ export async function createWholeEngine(manifest,{threads}={}){
     const url=new URL(String(input),base),entry=manifest.files.find(f=>new URL(f.path,base).href===url.href);
     if(!entry)throw Error('認識依存の固定リスト外へのアクセスを拒否しました。');
     const response=await fetch(url);if(!response.ok)throw Error('全体OCRの認識データがありません。エンジンを準備してください。');
-    const bytes=await response.arrayBuffer(),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+    const bytes=await response.arrayBuffer(),hash=await sha256Hex(bytes);
     if(bytes.byteLength!==entry.bytes||hash!==entry.sha256)throw Error('全体OCRのモデル検証に失敗しました。エンジンを再保存してください。');
     return new Response(bytes,{headers:{'Content-Type':'application/octet-stream'}});
   };

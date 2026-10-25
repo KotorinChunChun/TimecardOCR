@@ -1,10 +1,10 @@
-import {mapPoint} from './core.mjs';
+import {mapPoint,sha256Hex} from './core.mjs';
 import {perimeterColor,preparedSize,recognitionSize} from './ocr-prep.mjs';
 export function canvas(w,h){const c=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):Object.assign(document.createElement('canvas'),{width:w,height:h});return c;}
 export async function imageEvidence(image){
   const {data}=image.getContext('2d',{willReadFrequently:true}).getImageData(0,0,image.width,image.height);let colorPixels=0,midtones=0;
   for(let i=0;i<data.length;i+=4){if(Math.max(data[i],data[i+1],data[i+2])-Math.min(data[i],data[i+1],data[i+2])>8)colorPixels++;if(data[i]>16&&data[i]<239)midtones++;}
-  const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),b=>b.toString(16).padStart(2,'0')).join('');
+  const sha256=await sha256Hex(data);
   return {sha256,width:image.width,height:image.height,colorPixels,midtones,canvasId:image.id??''};
 }
 export function warp(source,size,inverse){
@@ -48,4 +48,11 @@ export function prepareCrop(source,region,{paddingColor}={}){
   const color=paddingColor??regionColor(source,region),angle=region.rotation_degrees??0,size=preparedSize(cut.width,cut.height,angle),out=canvas(size.width,size.height),target=out.getContext('2d');
   target.fillStyle=`rgb(${color.join(',')})`;target.fillRect(0,0,out.width,out.height);target.translate(out.width/2,out.height/2);target.rotate(angle*Math.PI/180);target.drawImage(cut,-cut.width/2,-cut.height/2);
   return out;
+}
+// 青除去は画素単位なので、全画像に掛けてから切り出す場合と同じ結果をセル範囲の計算だけで得る。
+export function prepareFilteredCrop(source,region,hue,saturation){
+  const [x,y,right,bottom]=region.bbox,w=right-x,h=bottom-y;
+  if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
+  const part=canvas(w,h);part.getContext('2d').drawImage(source,x,y,w,h,0,0,w,h);
+  return prepareCrop(removeBlue(part,hue,saturation),{...region,bbox:[0,0,w,h]});
 }
