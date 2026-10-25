@@ -1,0 +1,16 @@
+/www/test/timecard-ocr/vendor/
+/www/test/timecard-ocr/models/*.onnx
+/dev/history/*/logs/
+/private/
+__pycache__/
+.venv/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+*.csv
+*.sqlite
+*.db
+timecard-work*.json
+timecard-calibration*.json

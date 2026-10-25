@@ -1,0 +1,103 @@
+{
+  "sources": [
+    {
+      "url": "https://registry.npmjs.org/onnxruntime-web/-/onnxruntime-web-1.24.3.tgz",
+      "format": "tar",
+      "sha256": "d521349a11a1f6012ce6b21fcdafce310b3111bbb7552a1d1f7dcb2714b76d78",
+      "files": [
+        {
+          "member": "package/dist/ort.wasm.min.mjs",
+          "path": "vendor/onnxruntime/ort.wasm.min.mjs",
+          "sha256": "d5a6d7bc8ee587648fb3742dde8c0094d17cbd3822a68bbec8ddfcd4f2adb88e"
+        },
+        {
+          "member": "package/dist/ort-wasm-simd-threaded.mjs",
+          "path": "vendor/onnxruntime/ort-wasm-simd-threaded.mjs",
+          "sha256": "5687566b1bc1c8cf628d76c2ddb16b2a3b81a7997273d4666564880495088e57"
+        },
+        {
+          "member": "package/dist/ort-wasm-simd-threaded.wasm",
+          "path": "vendor/onnxruntime/ort-wasm-simd-threaded.wasm",
+          "sha256": "be0e129949062ad50290ef94683fac8be5bb6156f709e030b7a5f1661a2f6c17"
+        }
+      ]
+    },
+    {
+      "url": "https://registry.npmjs.org/sql.js/-/sql.js-1.13.0.tgz",
+      "format": "tar",
+      "sha256": "6d70e68446df85ac8f56e34dd10986cfe1182335cb0f071b71b3f007bc33394a",
+      "files": [
+        {
+          "member": "package/dist/sql-wasm.js",
+          "path": "vendor/sqljs/sql-wasm.js",
+          "sha256": "694ca5b36aa3e6e71f417819d7df390b65343665fcfa5c69015ca33d93d291b3"
+        },
+        {
+          "member": "package/dist/sql-wasm.wasm",
+          "path": "vendor/sqljs/sql-wasm.wasm",
+          "sha256": "0734155c83e493983d1f2ff5b09a4fab6e35a32e9449c7e4e545756439f62d73"
+        },
+        {
+          "member": "package/LICENSE",
+          "path": "vendor/sqljs/LICENSE",
+          "sha256": "60a3f6e4d7b29b4321359e683b36cf198d24f58e24582070f56e6fa89d5ee2be"
+        }
+      ]
+    },
+    {
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_server.onnx",
+      "format": "file",
+      "sha256": "e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a",
+      "files": [
+        {
+          "path": "models/ppocrv5-rec.onnx",
+          "sha256": "e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a"
+        }
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/LICENSE",
+      "format": "file",
+      "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
+      "files": [
+        {
+          "path": "licenses/paddleocr.txt",
+          "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
+        }
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/RapidAI/RapidOCR/main/LICENSE",
+      "format": "file",
+      "sha256": "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333",
+      "files": [
+        {
+          "path": "licenses/rapidocr.txt",
+          "sha256": "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333"
+        }
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.24.3/LICENSE",
+      "format": "file",
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "files": [
+        {
+          "path": "licenses/onnxruntime.txt",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        }
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.24.3/ThirdPartyNotices.txt",
+      "format": "file",
+      "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+      "files": [
+        {
+          "path": "licenses/onnxruntime-third-party.txt",
+          "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+        }
+      ]
+    }
+  ]
+}

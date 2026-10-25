@@ -1,0 +1,176 @@
+{
+  "name": "Sample timecard 16 rows; manually configured layout",
+  "size": [
+    1360,
+    1680
+  ],
+  "row_edges": [
+    160,
+    255,
+    350,
+    445,
+    540,
+    635,
+    730,
+    825,
+    920,
+    1015,
+    1110,
+    1205,
+    1300,
+    1395,
+    1490,
+    1585,
+    1680
+  ],
+  "row_padding": 5,
+  "confidence_threshold": 0.9,
+  "snap_rows_to_blue_lines": false,
+  "columns": [
+    {
+      "name": "day",
+      "x": [
+        10,
+        108
+      ],
+      "kind": "day",
+      "direction": "horizontal"
+    },
+    {
+      "name": "arrival_stamp",
+      "x": [
+        121,
+        174
+      ],
+      "kind": "text",
+      "direction": "rotate_cw"
+    },
+    {
+      "name": "arrival",
+      "x": [
+        179,
+        301
+      ],
+      "kind": "time",
+      "direction": "horizontal"
+    },
+    {
+      "name": "interim_out",
+      "x": [
+        315,
+        495
+      ],
+      "kind": "time",
+      "direction": "horizontal"
+    },
+    {
+      "name": "interim_in",
+      "x": [
+        507,
+        686
+      ],
+      "kind": "time",
+      "direction": "horizontal"
+    },
+    {
+      "name": "departure_stamp",
+      "x": [
+        696,
+        734
+      ],
+      "kind": "text",
+      "direction": "rotate_cw"
+    },
+    {
+      "name": "departure",
+      "x": [
+        736,
+        875
+      ],
+      "kind": "time",
+      "direction": "horizontal"
+    },
+    {
+      "name": "overtime",
+      "x": [
+        887,
+        1193
+      ],
+      "kind": "duration",
+      "direction": "horizontal"
+    },
+    {
+      "name": "subtotal",
+      "x": [
+        1202,
+        1359
+      ],
+      "kind": "duration",
+      "direction": "horizontal"
+    }
+  ],
+  "extra_regions": [
+    {
+      "id": "date_header",
+      "column_name": "date_header",
+      "kind": "text",
+      "direction": "vertical_stack:2",
+      "bbox": [
+        20,
+        10,
+        100,
+        145
+      ]
+    },
+    {
+      "id": "regular_in_header",
+      "column_name": "regular_in_header",
+      "kind": "text",
+      "direction": "vertical_stack:2",
+      "bbox": [
+        140,
+        12,
+        297,
+        148
+      ]
+    },
+    {
+      "id": "regular_out_header",
+      "column_name": "regular_out_header",
+      "kind": "text",
+      "direction": "vertical_stack:2",
+      "bbox": [
+        700,
+        12,
+        860,
+        148
+      ]
+    },
+    {
+      "id": "title",
+      "column_name": "title",
+      "kind": "text",
+      "direction": "horizontal",
+      "bbox": [
+        285,
+        365,
+        655,
+        431
+      ],
+      "source": "original_image"
+    },
+    {
+      "id": "card_id",
+      "column_name": "card_id",
+      "kind": "text",
+      "direction": "horizontal",
+      "bbox": [
+        140,
+        92,
+        230,
+        153
+      ],
+      "source": "original_image"
+    }
+  ]
+}

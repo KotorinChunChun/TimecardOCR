@@ -1,0 +1,49 @@
+"""ブラウザーOCRの配信依存を固定ハッシュで検証する。--download時だけ公式配布物を取得する。"""
+import argparse
+import hashlib
+import io
+import json
+from pathlib import Path
+import tarfile
+from urllib.request import urlopen
+
+ROOT = Path(__file__).resolve().parents[1]
+APP = ROOT / 'www/test/timecard-ocr'
+LOCK = ROOT / 'dev/history/v1.1.0/timecard-assets-lock.json'
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def verify(download=False):
+    lock = json.loads(LOCK.read_text(encoding='utf-8'))
+    for group in lock['sources']:
+        missing = any(not (APP / f['path']).is_file() for f in group['files'])
+        if download and missing:
+            with urlopen(group['url'], timeout=180) as response:
+                data = response.read()
+            assert sha(data) == group['sha256'], '取得元ハッシュ不一致'
+            if group['format'] == 'tar':
+                with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+                    for entry in group['files']:
+                        target = APP / entry['path']
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(archive.extractfile(entry['member']).read())
+            else:
+                target = APP / group['files'][0]['path']
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+        for entry in group['files']:
+            assert sha((APP / entry['path']).read_bytes()) == entry['sha256'], '依存ファイル不一致: ' + entry['path']
+    manifest = json.loads((APP / 'assets.json').read_text(encoding='utf-8'))
+    for entry in manifest['files']:
+        data = (APP / entry['path']).read_bytes()
+        assert len(data) == entry['bytes'] and sha(data) == entry['sha256'], entry['path']
+    print(f'固定依存 {sum(len(g["files"]) for g in lock["sources"])}件と実行時台帳 {len(manifest["files"])}件のSHA-256一致')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--download', action='store_true')
+    verify(parser.parse_args().download)

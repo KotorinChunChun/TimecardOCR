@@ -1,0 +1,47 @@
+{
+  "version": "1.1.0",
+  "files": [
+    {
+      "path": "models/characters.json",
+      "bytes": 110788,
+      "sha256": "d858428fbe0ada92b439a5f277b51bc1b318fd985d80946a3ce859d7f2446a92",
+      "mime": "application/json"
+    },
+    {
+      "path": "models/ppocrv5-rec.onnx",
+      "bytes": 84577022,
+      "sha256": "e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a",
+      "mime": "application/octet-stream"
+    },
+    {
+      "path": "vendor/onnxruntime/ort-wasm-simd-threaded.mjs",
+      "bytes": 24274,
+      "sha256": "5687566b1bc1c8cf628d76c2ddb16b2a3b81a7997273d4666564880495088e57",
+      "mime": "text/javascript"
+    },
+    {
+      "path": "vendor/onnxruntime/ort-wasm-simd-threaded.wasm",
+      "bytes": 12361745,
+      "sha256": "be0e129949062ad50290ef94683fac8be5bb6156f709e030b7a5f1661a2f6c17",
+      "mime": "application/wasm"
+    },
+    {
+      "path": "vendor/onnxruntime/ort.wasm.min.mjs",
+      "bytes": 49997,
+      "sha256": "d5a6d7bc8ee587648fb3742dde8c0094d17cbd3822a68bbec8ddfcd4f2adb88e",
+      "mime": "text/javascript"
+    },
+    {
+      "path": "vendor/sqljs/sql-wasm.js",
+      "bytes": 48788,
+      "sha256": "694ca5b36aa3e6e71f417819d7df390b65343665fcfa5c69015ca33d93d291b3",
+      "mime": "text/javascript"
+    },
+    {
+      "path": "vendor/sqljs/sql-wasm.wasm",
+      "bytes": 659806,
+      "sha256": "0734155c83e493983d1f2ff5b09a4fab6e35a32e9449c7e4e545756439f62d73",
+      "mime": "application/wasm"
+    }
+  ]
+}
