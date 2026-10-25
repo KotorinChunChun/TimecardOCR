@@ -37,21 +37,3 @@ export function wholeAtlasLayout(regions){
   for(const s of pages[0].slots)s.y+=Math.floor((packedHeights.get(s.y)-s.height)/2);
   return pages[0];
 }
-export function assignPageText(blocks,slots){
-  const output=new Map(slots.map(s=>[s.id,[]]));
-  for(const block of blocks??[])for(const paragraph of block.paragraphs??[])for(const line of paragraph.lines??[])for(const word of line.words??[]){
-    const symbols=word.symbols?.length?word.symbols:[word];
-    for(const glyph of symbols){
-      const box=glyph.bbox;if(!box||!glyph.text?.trim())continue;const x=(box.x0+box.x1)/2,y=(box.y0+box.y1)/2;
-      const slot=slots.find(s=>x>=s.x&&x<s.x+s.width&&y>=s.y&&y<s.y+s.height);
-      // 罫線を縦棒として認識した場合は文字列へ混ぜない。数字1や通常の文字は残す。
-      const rule=glyph.text.trim()==='|'&&box.x1-box.x0<=6&&box.y1-box.y0>=20;
-      if(slot&&!rule)output.get(slot.id).push({...glyph,lineY:(line.bbox?.y0??box.y0),confidence:(glyph.confidence??word.confidence??0)/100});
-    }
-  }
-  return new Map([...output].map(([id,glyphs])=>{
-    glyphs.sort((a,b)=>a.lineY-b.lineY||a.bbox.x0-b.bbox.x0);let text='',lastLine=null;
-    for(const g of glyphs){if(lastLine!==null&&g.lineY!==lastLine)text+='\n';text+=g.text;lastLine=g.lineY;}
-    return [id,{text:text.trim(),confidence:glyphs.length?glyphs.reduce((s,g)=>s+g.confidence,0)/glyphs.length:0}];
-  }));
-}

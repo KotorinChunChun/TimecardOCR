@@ -1,4 +1,4 @@
-const SHELL='timecard-ocr-shell-v1.1.0-r44';
+const SHELL='timecard-ocr-shell-v1.1.0-r45';
 const ASSETS='timecard-ocr-assets-v1.1.0';
 const CORE=['./','index.html','style.css','app.mjs','bootstrap.mjs','update.html','update.mjs','core.mjs','imaging.mjs','ocr-prep.mjs','engine-client.mjs','image-drop.mjs','ui-tools.mjs','point-tools.mjs','table-detector.mjs','workflow.mjs','grid-editor.mjs','page-layout.mjs','atlas.mjs','storage.mjs','ocr-worker.mjs','assets.json','template-original.json','THIRD_PARTY.md','vendor/sqljs/sql-wasm.js','vendor/sqljs/sql-wasm.wasm'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(SHELL).then(c=>c.addAll(CORE.map(path=>new Request(new URL(path,self.location.href),{cache:'reload'})))).then(()=>self.skipWaiting())));

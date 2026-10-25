@@ -12,6 +12,12 @@ APP = ROOT / 'www/test/timecard-ocr'
 LOCK = ROOT / 'dev/history/v1.1.0/timecard-assets-lock.json'
 
 
+def check(condition, message):
+    # assert は python -O で消えるため、検証には使わない。
+    if not condition:
+        raise SystemExit(message)
+
+
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -23,7 +29,7 @@ def verify(download=False):
         if download and missing:
             with urlopen(group['url'], timeout=180) as response:
                 data = response.read()
-            assert sha(data) == group['sha256'], '取得元ハッシュ不一致'
+            check(sha(data) == group['sha256'], '取得元ハッシュ不一致')
             if group['format'] == 'tar':
                 with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
                     for entry in group['files']:
@@ -35,11 +41,11 @@ def verify(download=False):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
         for entry in group['files']:
-            assert sha((APP / entry['path']).read_bytes()) == entry['sha256'], '依存ファイル不一致: ' + entry['path']
+            check(sha((APP / entry['path']).read_bytes()) == entry['sha256'], '依存ファイル不一致: ' + entry['path'])
     manifest = json.loads((APP / 'assets.json').read_text(encoding='utf-8'))
     for entry in manifest['files']:
         data = (APP / entry['path']).read_bytes()
-        assert len(data) == entry['bytes'] and sha(data) == entry['sha256'], entry['path']
+        check(len(data) == entry['bytes'] and sha(data) == entry['sha256'], entry['path'])
     print(f'固定依存 {sum(len(g["files"]) for g in lock["sources"])}件と実行時台帳 {len(manifest["files"])}件のSHA-256一致')
 
 

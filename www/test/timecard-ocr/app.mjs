@@ -1,5 +1,5 @@
-import {VERSION,LABELS,FLAG_LABELS,columnLabel,rowLabel,validateTemplate,calibration,transform,regions,mapPoint,correctCell,csv,tableRows,evidenceRows} from './core.mjs';
-import {canvas,warp,crop,prepareCrop,removeBlue} from './imaging.mjs';
+import {VERSION,FLAG_LABELS,columnLabel,rowLabel,validateTemplate,calibration,transform,regions,correctCell,csv,tableRows,evidenceRows,sha256Hex} from './core.mjs';
+import {canvas,warp,crop,prepareCrop,prepareFilteredCrop} from './imaging.mjs';
 import {sqliteBytes} from './storage.mjs';
 import {POINT_PADDING,imageLayout,imagePosition,nearestPoint,movePoint,pointNames,pointOutline} from './point-tools.mjs';
 import {detectTableQuad,detectionImage} from './table-detector.mjs';
@@ -13,10 +13,9 @@ const $=id=>document.getElementById(id),CACHE='timecard-ocr-assets-v1.1.0';
 const confirmPage=pageConfirmation($('confirm-dialog'));
 let reviewBaseline=null;
 $('auto-points').dataset.detectorRevision='rows-area-v3';
-const state={source:null,normalized:null,points:[],cal:null,cells:[],selected:null,mode:'original',name:'',hash:'',worker:null,ready:false,engineSaved:false,engineChecked:false,busy:false,running:false,dirty:false,geometryDirty:true,drag:null,activePoint:-1,pointOrigin:'manual',stage:1,column:0,row:0,gridMode:'adjust',gridBase:null,previewSource:null,previewKey:'',imageRevision:0,definitionDirty:false};
-const simple=()=>gridTemplate(validateTemplate({name:'勤務表',size:[1000,1400],row_edges:Array.from({length:17},(_,i)=>Math.round(168+i*(1400-168)/16)),row_padding:6,confidence_threshold:.9,columns:[{name:'day',kind:'day',x:[0,120]},{name:'arrival',kind:'time',x:[120,410]},{name:'departure',kind:'time',x:[410,700]},{name:'subtotal',kind:'duration',x:[700,1000]}]}));
+const state={source:null,normalized:null,points:[],cal:null,cells:[],selected:null,mode:'original',name:'',hash:'',worker:null,ready:false,engineSaved:false,engineChecked:false,busy:false,running:false,dirty:false,geometryDirty:true,drag:null,activePoint:-1,pointOrigin:'manual',stage:1,column:0,row:0,gridMode:'adjust',gridBase:null,previewSource:null,previewKey:'',imageRevision:0,definitionDirty:false,selectedRows:[0],selectedColumns:[0],rowAnchor:0,columnAnchor:0,inputView:'crops',atlas:null,atlasKey:'',ocrPrevious:null};
+const simple=()=>gridTemplate({name:'勤務表',size:[1000,1400],row_edges:Array.from({length:17},(_,i)=>Math.round(168+i*(1400-168)/16)),row_padding:6,confidence_threshold:.9,columns:[{name:'day',kind:'day',x:[0,120]},{name:'arrival',kind:'time',x:[120,410]},{name:'departure',kind:'time',x:[410,700]},{name:'subtotal',kind:'duration',x:[700,1000]}]});
 let template=simple(),pendingInit=null;
-Object.assign(state,{selectedRows:[0],selectedColumns:[0],rowAnchor:0,columnAnchor:0,inputView:'crops',atlas:null,atlasKey:''});
 let previewFrame=0,atlasSequence=0;
 const thumbnails=new Map(),gridEditor=createGridEditor($('image-canvas'),{
   read:()=>({active:state.stage===2,image:state.normalized,template,column:state.column,mode:state.gridMode,busy:state.busy,cells:state.cells,selected:state.selected,selectedRows:state.selectedRows,selectedColumns:state.selectedColumns}),
@@ -28,6 +27,10 @@ const inputPreview=debounceTask(()=>{try{renderTable();}catch(error){message(err
 function message(text,error=false){$('message').textContent=text;$('message').hidden=!text;$('message').classList.toggle('error',error);}
 const guard=fn=>(...args)=>Promise.resolve().then(()=>fn(...args)).catch(error=>message(error.message||String(error),true));
 function cellColumnLabel(c){return columnLabel(template.columns.find(col=>col.name===c.column_name)??{name:c.column_name});}
+function cellTitle(c){return `${c.row_index?rowLabel(template,c.row_index-1)+' · ':''}${cellColumnLabel(c)}`;}
+function cellImage(c){return c.source==='original_image'?state.source:state.normalized;}
+function hideReview(){$('cell-review').hidden=true;$('results-panel').classList.remove('has-review');}
+const registerServiceWorker=()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
 function el(tag,text='',className=''){const e=document.createElement(tag);e.textContent=text;e.className=className;return e;}
 function setBusy(value){
   state.busy=value;
@@ -35,9 +38,10 @@ function setBusy(value){
   sync();
 }
 function sync(){
-  $('run').disabled=state.busy||state.stage!==3||state.geometryDirty||!(state.ready||state.engineSaved)||!state.normalized||($('ocr-mode').value==='individual'&&!state.selected);
-  $('run').textContent=$('ocr-mode').value==='individual'?'選択セルをOCR':'実行';
-  $('run-selected').disabled=state.busy||state.stage!==3||state.geometryDirty||!(state.ready||state.engineSaved)||!state.selected;
+  const engine=state.ready||state.engineSaved,ocrReady=!state.busy&&state.stage===3&&!state.geometryDirty&&engine,individual=$('ocr-mode').value==='individual';
+  $('run').disabled=!ocrReady||!state.normalized||(individual&&!state.selected);
+  $('run').textContent=individual?'選択セルをOCR':'実行';
+  $('run-selected').disabled=!ocrReady||!state.selected;
   $('compare-blue').disabled=state.busy;
   $('stop').disabled=!state.running;
   $('stop').hidden=!state.running;$('progress').hidden=!state.running;
@@ -66,12 +70,12 @@ function sync(){
   $('editor-title').textContent=state.stage===1?'編集 · 元画像':state.stage===2?'編集 · 行列':'OCR入力 · 切出しと結合画像';$('preview-title').textContent=state.stage===1?'プレビュー · 補正後':state.stage===2?'プレビュー · 切出し画像':'OCR結果';
   $('editor-state').textContent=state.stage===1?(state.source?(state.geometryDirty?'未確定':'確定済み'):''):'';
   for(const id of ['export-table','export-evidence','export-sqlite','save-project'])$(id).disabled=state.busy||!state.cells.length;
-  document.querySelectorAll('.cell-ocr').forEach(e=>e.disabled=state.busy||state.geometryDirty||!(state.ready||state.engineSaved));
+  document.querySelectorAll('.cell-ocr').forEach(e=>e.disabled=state.busy||state.geometryDirty||!engine);
 }
 function currentReview(){return reviewSnapshot(state.selected,$('corrected-value').value,$('correction-reason').value,$('reviewed').checked);}
 function unsavedCell(){return !$('cell-review').hidden&&reviewChanged(reviewBaseline,currentReview());}
 async function discardOK(){return !state.dirty&&!unsavedCell()||await confirmPage('現在の画像・読取結果を置き換えます。必要な作業は先に保存してください。続けますか？');}
-function clearResults(){inputPreview.cancel();state.atlas=null;state.atlasKey='';state.normalized=null;state.cal=null;state.cells=[];state.selected=null;state.mode='original';state.stage=1;state.geometryDirty=true;state.drag=null;state.previewSource=null;state.previewKey='';state.imageRevision++;thumbnails.clear();$('preview-canvas').hidden=true;$('preview-empty').hidden=false;$('cell-review').hidden=true;$('results-panel').classList.remove('has-review');$('table-wrap').replaceChildren(el('p','結果なし','empty small'));$('result-count').textContent='0セル';sync();}
+function clearResults(){inputPreview.cancel();state.atlas=null;state.atlasKey='';state.normalized=null;state.cal=null;state.cells=[];state.selected=null;state.mode='original';state.stage=1;state.geometryDirty=true;state.drag=null;state.previewSource=null;state.previewKey='';state.imageRevision++;thumbnails.clear();$('preview-canvas').hidden=true;$('preview-empty').hidden=false;hideReview();$('table-wrap').replaceChildren(el('p','結果なし','empty small'));$('result-count').textContent='0セル';sync();}
 async function invalidate(){if(state.cells.some(c=>c.raw||c.history?.length)&&!await discardOK())return false;clearResults();draw();return true;}
 function renderTemplate(){
   $('template-json').value=JSON.stringify(template,null,2);syncGridControls();
@@ -92,7 +96,7 @@ function renderTemplate(){
 function updateColumn(index,change){const next=structuredClone(template);Object.assign(next.columns[index],change);if(change.x&&next.layout_version===2){next.columns[index].x1=change.x[0]/next.size[0];next.columns[index].x2=change.x[1]/next.size[0];}return applyNewTemplate(next);}
 async function applyNewTemplate(next){
   const validated=gridTemplate(next);
-  if(unsavedCell()){if(!await confirmPage('編集中の値を破棄して行列設定を変更しますか？')){renderTemplate();return false;}$('cell-review').hidden=true;reviewBaseline=null;state.selected=null;}
+  if(unsavedCell()){if(!await confirmPage('編集中の値を破棄して行列設定を変更しますか？')){renderTemplate();return false;}hideReview();reviewBaseline=null;state.selected=null;}
   if(state.normalized&&JSON.stringify(validated.size)===JSON.stringify(template.size))return changeGrid(validated);
   template=validated;state.dirty=!!state.source;renderTemplate();if(state.normalized&&!state.geometryDirty)await applyGeometry({restoring:true});else draw();message('');return true;
 }
@@ -182,7 +186,7 @@ function editHeading(axis,index){
 }
 function updateHeading(axis,value){
   if(state.busy)return;template=renameHeading(template,axis,axis==='column'?state.column:state.row,value);state.dirty=!!state.source;renderTemplate();renderTable();draw();
-  const c=state.cells.find(c=>c.id===state.selected);if(c)$('cell-title').textContent=`${c.row_index?rowLabel(template,c.row_index-1)+' · ':''}${cellColumnLabel(c)}`;
+  const c=state.cells.find(c=>c.id===state.selected);if(c)$('cell-title').textContent=cellTitle(c);
 }
 function changeGrid(next,{drag=false,cancel=false}={}){
   if(state.busy)return false;
@@ -191,7 +195,7 @@ function changeGrid(next,{drag=false,cancel=false}={}){
   const previous=state.gridBase??state.cells;template=validated;
   state.cells=reconcileCells(previous,regions(template),state.cal.inverse);state.dirty=true;thumbnails.clear();
 
-  if(state.selected){$('cell-review').hidden=true;$('results-panel').classList.remove('has-review');state.selected=null;}
+  if(state.selected){hideReview();state.selected=null;}
   if(drag){$('template-json').value=JSON.stringify(template,null,2);syncGridControls();}else renderTemplate();
   inputPreview.schedule();$('table-wrap').dataset.pending='true';$('atlas-wrap').dataset.pending='true';draw();message('');return true;
 }
@@ -200,7 +204,7 @@ async function setStage(stage){
   if(unsavedCell()&&!await confirmPage('編集中の値を破棄して工程を切り替えますか？'))return;
   reviewBaseline=null;
   inputPreview.cancel();state.stage=stage;state.mode=stage===1?'original':'grid';$('settings-menu').open=false;$('heading-editor').hidden=true;
-  $('cell-review').hidden=true;$('results-panel').classList.remove('has-review');
+  hideReview();
   renderTable();draw();sync();if(stage===3&&state.selected)selectCell(state.selected);
 }
 function paintGeometryPreview(image){
@@ -250,7 +254,7 @@ async function openImage(file){
   if(file.size>30000000||!['image/png','image/jpeg','image/webp','image/bmp'].includes(file.type))throw Error('30MB以内のPNG・JPEG・WebP・BMPを選んでください。');
   const bitmap=await createImageBitmap(file);if(bitmap.width*bitmap.height>24000000){bitmap.close();throw Error('画像は2400万画素以内にしてください。');}
   const source=canvas(bitmap.width,bitmap.height);source.getContext('2d').drawImage(bitmap,0,0);bitmap.close();
-  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())),b=>b.toString(16).padStart(2,'0')).join('');
+  const hash=await sha256Hex(await file.arrayBuffer());
   clearResults();state.source=source;state.name=file.name;state.hash=hash;state.points=[];state.dirty=true;
   $('image-name').textContent=`${file.name} · ${source.width} × ${source.height}px`;
   state.activePoint=-1;state.pointOrigin='manual';pointHint();draw();message('');$('settings-menu').open=false;
@@ -266,7 +270,7 @@ async function applyGeometry({restoring=false}={}){
   for(const r of rs)crop(r.source==='original_image'?state.source:normalized,r.bbox,r.direction);
   state.normalized=normalized;state.cal={...cal,source_sha256:state.hash};state.geometryDirty=false;state.imageRevision++;thumbnails.clear();
   state.cells=reconcileCells([],rs,cal.inverse);
-  state.selected=null;state.stage=2;state.mode='grid';state.dirty=true;renderTemplate();$('cell-review').hidden=true;$('results-panel').classList.remove('has-review');$('settings-menu').open=false;renderTable();draw();paintGeometryPreview(normalized);message('');
+  state.selected=null;state.stage=2;state.mode='grid';state.dirty=true;renderTemplate();hideReview();$('settings-menu').open=false;renderTable();draw();paintGeometryPreview(normalized);message('');
 }
 function getAtlas(){
   if(!state.normalized)return null;const key=JSON.stringify([ATLAS_REVISION,state.imageRevision,state.cells.map(c=>[c.id,c.bbox,c.direction,c.rotation_degrees,c.source])]);
@@ -278,7 +282,7 @@ function renderAtlas(){
 }
 function renderResults(){
   if(state.stage!==3)return;const table=el('table','','ocr-result-table'),head=el('tr');head.append(el('th','行'));template.columns.forEach(c=>head.append(el('th',columnLabel(c))));const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');
-  const button=c=>{const b=el('button',c.value||'（空欄）','result-cell');b.type='button';b.dataset.resultCellId=c.id;b.setAttribute('aria-label',`${c.row_index?rowLabel(template,c.row_index-1)+' ':''}${cellColumnLabel(c)}のOCR結果`);b.classList.toggle('selected',c.id===state.selected);b.classList.toggle('flagged',!!c.flags.length);b.title=c.flags.map(f=>FLAG_LABELS[f]??f).join('・');b.addEventListener('click',()=>selectCell(c.id));return b;};
+  const button=c=>{const b=el('button',c.value||'（空欄）','result-cell');b.type='button';b.dataset.resultCellId=c.id;b.setAttribute('aria-label',`${c.row_index?rowLabel(template,c.row_index-1)+' ':''}${cellColumnLabel(c)}のOCR結果`);b.classList.toggle('selected',c.id===state.selected);b.classList.toggle('flagged',!!c.flags.length);b.title=c.flags.map(f=>FLAG_LABELS[f]??f).join('・');b.addEventListener('click',guard(()=>selectCell(c.id)));return b;};
   for(let row=1;row<template.row_edges.length;row++){const tr=el('tr');tr.append(el('th',rowLabel(template,row-1)));for(const col of template.columns){const td=el('td'),c=state.cells.find(c=>c.row_index===row&&c.column_name===col.name);if(c)td.append(button(c));tr.append(td);}body.append(tr);}
   for(const c of state.cells.filter(c=>c.row_index===0)){const tr=el('tr');tr.append(el('th',c.column_name));const td=el('td');td.colSpan=template.columns.length;td.append(button(c));tr.append(td);body.append(tr);}table.append(body);$('ocr-result-wrap').replaceChildren(table);
 }
@@ -292,8 +296,8 @@ function renderCropTable(){
   const cellCard=c=>{
     const card=el('div','',`crop-card ${c.is_header_row?'header-row':''} ${c.is_header_column?'header-column':''} ${c.id===state.selected?'selected':''}`),button=el('button','','crop-select');button.type='button';button.dataset.cellId=c.id;button.setAttribute('aria-label',`${c.row_index?c.row_index+'行 ':''}${cellColumnLabel(c)}を確認`);
     const key=JSON.stringify([c.id,state.imageRevision,c.source,c.bbox,c.direction,c.rotation_degrees]);used.add(key);let thumb=thumbnails.get(key);
-    if(!thumb){thumb=document.createElement('canvas');const cut=prepareCrop(c.source==='original_image'?state.source:state.normalized,c),ratio=Math.min(1,190/cut.width,90/cut.height);thumb.dataset.ocrWidth=cut.width;thumb.dataset.ocrHeight=cut.height;thumb.width=Math.max(1,Math.round(cut.width*ratio));thumb.height=Math.max(1,Math.round(cut.height*ratio));thumb.getContext('2d').drawImage(cut,0,0,thumb.width,thumb.height);thumbnails.set(key,thumb);}
-    thumb.setAttribute('aria-label',`${c.row_index?c.row_index+'行 ':''}${cellColumnLabel(c)}の切出し画像`);button.append(thumb);if(state.stage===3)button.append(el('span',c.value||'（未認識・空欄）','crop-value'));button.addEventListener('click',()=>selectCell(c.id));card.append(button);
+    if(!thumb){thumb=document.createElement('canvas');const cut=prepareCrop(cellImage(c),c),ratio=Math.min(1,190/cut.width,90/cut.height);thumb.dataset.ocrWidth=cut.width;thumb.dataset.ocrHeight=cut.height;thumb.width=Math.max(1,Math.round(cut.width*ratio));thumb.height=Math.max(1,Math.round(cut.height*ratio));thumb.getContext('2d').drawImage(cut,0,0,thumb.width,thumb.height);thumbnails.set(key,thumb);}
+    thumb.setAttribute('aria-label',`${c.row_index?c.row_index+'行 ':''}${cellColumnLabel(c)}の切出し画像`);button.append(thumb);if(state.stage===3)button.append(el('span',c.value||'（未認識・空欄）','crop-value'));button.addEventListener('click',guard(()=>selectCell(c.id)));card.append(button);
     if(state.stage===3&&c.flags.length)card.append(el('small',c.flags.includes('not_processed')?'未処理':c.flags.map(f=>FLAG_LABELS[f]??f).join('・'),'cell-flags'));
     if(state.stage===3&&$('ocr-mode').value==='individual'){const run=el('button','OCR','secondary cell-ocr');run.type='button';run.dataset.ocrCell=c.id;run.setAttribute('aria-label',`${c.row_index?c.row_index+'行 ':''}${cellColumnLabel(c)}だけOCR`);run.addEventListener('click',guard(()=>runOCR({type:'cell',id:c.id})));card.append(run);}
     return card;
@@ -305,7 +309,7 @@ function renderCropTable(){
   }
   for(const c of state.cells.filter(c=>c.row_index===0&&(!filtered||c.flags.length))){const tr=el('tr');tr.append(el('th','補助'));const td=el('td');td.colSpan=template.columns.length;td.append(el('span',c.column_name+' '),cellCard(c));tr.append(td);body.append(tr);}
   for(const key of thumbnails.keys())if(!used.has(key))thumbnails.delete(key);
-  table.append(body);$('table-wrap').replaceChildren(table);const pending=state.cells.filter(c=>c.flags.length).length;$('result-count').textContent=state.stage===2?`${state.cells.length}セル`:`${state.cells.length}セル · 要確認${pending}`;sync();
+  table.append(body);$('table-wrap').replaceChildren(table);
 }
 async function selectCell(id){
   if(unsavedCell()){
@@ -313,9 +317,9 @@ async function selectCell(id){
     if(!await confirmPage('選択中のセルの編集が未保存です。編集を破棄して移動しますか？'))return false;
   }
   const c=state.cells.find(c=>c.id===id);if(!c)return;state.selected=id;if(c.row_index>0){state.row=c.row_index-1;state.selectedRows=[state.row];}if(Number.isInteger(c.column_index)){state.column=c.column_index;state.selectedColumns=[state.column];}syncGridControls();renderTable();draw();if(state.stage!==3)return;$('cell-review').hidden=false;$('results-panel').classList.add('has-review');
-  $('cell-title').textContent=`${c.row_index?rowLabel(template,c.row_index-1)+' · ':''}${cellColumnLabel(c)}`;
-  const source=c.source==='original_image'?state.source:state.normalized;
-  for(const [target,image]of [['crop-original',source],['crop-filtered',removeBlue(source,template.blue_hue,template.blue_saturation)]]){const cut=prepareCrop(image,c),out=$(target);out.width=cut.width;out.height=cut.height;out.getContext('2d').drawImage(cut,0,0);}
+  $('cell-title').textContent=cellTitle(c);
+  const source=cellImage(c);
+  for(const [target,cut]of [['crop-original',prepareCrop(source,c)],['crop-filtered',prepareFilteredCrop(source,c,template.blue_hue,template.blue_saturation)]]){const out=$(target);out.width=cut.width;out.height=cut.height;out.getContext('2d').drawImage(cut,0,0);}
   $('raw-text').textContent=c.raw||'（空欄・未認識）';$('filtered-text').textContent=c.filtered??'比較なし';$('confidence').textContent=(c.confidence*100).toFixed(1)+'%';$('confidence').title='正答率の保証ではありません';$('cell-flags').textContent=c.flags.map(f=>FLAG_LABELS[f]??f).join(' / ');
   $('corrected-value').value=c.value;$('correction-reason').value='';$('reviewed').checked=c.reviewed;$('history').replaceChildren(...(c.history??[]).map(h=>el('li',`${h.at}\n${h.old_value} → ${h.new_value}\n${h.reason}${h.reviewed?'（画像照合済み）':''}`)));
   reviewBaseline=currentReview();
@@ -323,7 +327,7 @@ async function selectCell(id){
 }
 function saveCell(next=false){
   if(state.busy)return;const c=state.cells.find(c=>c.id===state.selected);if(!c)throw Error('セルを選んでください。');
-  correctCell(c,$('corrected-value').value,$('correction-reason').value,$('reviewed').checked);state.dirty=true;$('correction-reason').value='';reviewBaseline=null;
+  correctCell(c,$('corrected-value').value,$('correction-reason').value,$('reviewed').checked,template.confidence_threshold);state.dirty=true;$('correction-reason').value='';reviewBaseline=null;
   const index=state.cells.indexOf(c),target=next?state.cells.slice(index+1).find(x=>!$('only-flagged').checked||x.flags.length):null;selectCell(target?.id??c.id);message('');
 }
 function stopWorker(){state.worker?.terminate();state.worker=null;state.ready=false;}
@@ -348,20 +352,19 @@ async function installEngine({silent=false}={}){
   try{
     if(!('serviceWorker'in navigator)||!('caches'in globalThis))throw Error('HTTPSで開き、Service Worker・サイト保存を許可したブラウザーを使ってください。');
     // Cache APIへの保存はページがSWに制御されていなくても可能。強制再読込時に待ち続けない。
-    await navigator.serviceWorker.register('./sw.js');
+    await registerServiceWorker();
     const manifest=await(await fetch('./assets.json')).json(),cache=await caches.open(CACHE),total=manifest.files.reduce((s,f)=>s+f.bytes,0);let done=0;
     for(const file of manifest.files){
-      const url=new URL(file.path,location.href).href;let response=await cache.match(url);
+      const url=new URL(file.path,location.href).href,cached=await cache.match(url);
       let data;
-      if(!response){
-        response=await fetch(url,{cache:'no-store',credentials:'omit'});if(!response.ok)throw Error('エンジンを取得できません: '+file.path);
+      if(!cached){
+        const response=await fetch(url,{cache:'no-store',credentials:'omit'});if(!response.ok)throw Error('エンジンを取得できません: '+file.path);
         const reader=response.body.getReader(),chunks=[];let received=0;
         for(;;){const part=await reader.read();if(part.done)break;chunks.push(part.value);received+=part.value.length;message(`エンジンを保存中… ${((done+received)/1000000).toFixed(1)} / ${(total/1000000).toFixed(1)} MB`);}
         const joined=new Uint8Array(received);let offset=0;for(const part of chunks){joined.set(part,offset);offset+=part.length;}data=joined.buffer;
-      }else data=await response.arrayBuffer();
-      const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),b=>b.toString(16).padStart(2,'0')).join('');
-      if(data.byteLength!==file.bytes||hash!==file.sha256){await cache.delete(url);throw Error('取得ファイルの検証に失敗しました。もう一度エンジン保存を実行してください。');}
-      await cache.put(url,new Response(data,{headers:{'Content-Type':file.mime}}));done+=file.bytes;
+      }else data=await cached.arrayBuffer();
+      if(data.byteLength!==file.bytes||await sha256Hex(data)!==file.sha256){await cache.delete(url);throw Error('取得ファイルの検証に失敗しました。もう一度エンジン保存を実行してください。');}
+      if(!cached)await cache.put(url,new Response(data,{headers:{'Content-Type':file.mime}}));done+=file.bytes;
     }
     state.engineSaved=true;state.engineChecked=true;sync();
     message('');
@@ -450,7 +453,7 @@ $('image-canvas').addEventListener('keydown',event=>{if(event.key==='Escape'&&st
 $('image-canvas').addEventListener('click',event=>{
   if(state.busy||state.mode!=='normalized')return;
   const p=pointerPosition(event);if(!p?.inside)return;
-  const r=state.cells.find(c=>c.source!=='original_image'&&p.point[0]>=c.bbox[0]&&p.point[0]<c.bbox[2]&&p.point[1]>=c.bbox[1]&&p.point[1]<c.bbox[3]);if(r)selectCell(r.id);
+  const r=state.cells.find(c=>c.source!=='original_image'&&p.point[0]>=c.bbox[0]&&p.point[0]<c.bbox[2]&&p.point[1]>=c.bbox[1]&&p.point[1]<c.bbox[3]);if(r)guard(selectCell)(r.id);
 });
 $('image-file').addEventListener('change',guard(e=>openImage(e.target.files[0])));
 bindImageDropZone($('image-drop-zone'),{canOpen:()=>state.stage===1&&!state.busy,onFile:openImage,onError:error=>message(error.message,true)});
@@ -499,7 +502,7 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape'){for(const i
 document.addEventListener('click',event=>{for(const id of menuIds)if(!$(id).contains(event.target))$(id).open=false;if(event.target!==$('open-heading')&&!$('heading-editor').contains(event.target))$('heading-editor').hidden=true;});
 async function bootEngine(){
   try{
-    if('serviceWorker'in navigator)await navigator.serviceWorker.register('./sw.js');
+    if('serviceWorker'in navigator)await registerServiceWorker();
     if('caches'in globalThis){
       const response=await fetch('./assets.json');if(!response.ok)throw Error('認識データ台帳を読み込めません。');
       const manifest=await response.json(),cache=await caches.open(CACHE);

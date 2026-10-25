@@ -43,6 +43,12 @@ timecard-calibration*.json
 '''
 
 
+def check(condition, message):
+    # assert は python -O で消えるため、検証には使わない。
+    if not condition:
+        raise SystemExit(message)
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -50,16 +56,16 @@ def digest(path):
 def verify(target):
     manifest = json.loads((target / 'export-manifest.json').read_text(encoding='utf-8'))
     expected = set(FILES) | {'README.md', '.gitignore', '.gitattributes'}
-    assert set(f['path'] for f in manifest['files']) == expected
+    check(set(f['path'] for f in manifest['files']) == expected, '台帳のファイル一覧が固定リストと一致しません。')
     actual = {p.relative_to(target).as_posix() for p in target.rglob('*')
               if p.is_file() and '.git' not in p.relative_to(target).parts}
-    assert actual == expected | {'export-manifest.json'}, '固定リスト外のファイルがあります。'
+    check(actual == expected | {'export-manifest.json'}, '固定リスト外のファイルがあります。')
     for entry in manifest['files']:
         relative = entry['path']
-        assert not any(part in {'private', 'logs', 'validation'} for part in Path(relative).parts)
-        assert not Path(relative).suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.csv', '.db', '.sqlite', '.onnx'}
+        check(not any(part in {'private', 'logs', 'validation'} for part in Path(relative).parts), '非公開・ログ・検証用フォルダーは含めません: ' + relative)
+        check(Path(relative).suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.csv', '.db', '.sqlite', '.onnx'}, '画像・結果・モデルは含めません: ' + relative)
         path = target / relative
-        assert path.is_file() and digest(path) == entry['sha256'], relative
+        check(path.is_file() and digest(path) == entry['sha256'], 'SHA-256不一致: ' + relative)
     print(f"固定ソース {len(expected)}件のSHA-256、実画像・結果・ログの除外: 合格")
 
 
