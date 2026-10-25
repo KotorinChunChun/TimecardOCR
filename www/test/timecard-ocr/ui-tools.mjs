@@ -16,13 +16,15 @@ export function debounceTask(task,delay=1000,{setTimer=setTimeout,clearTimer=cle
 }
 export function paneRatio(value,width){const minimum=Math.min(.4,Math.max(.2,180/Math.max(1,width)));return Math.max(minimum,Math.min(1-minimum,value));}
 export function popupPosition(anchor,container,popup){return {left:Math.max(8,Math.min(container.width-popup.width-8,anchor.x)),top:Math.max(8,Math.min(container.height-popup.height-8,anchor.y))};}
-export function bindPaneSplitter(workspace,splitter,onChange){
-  let ratio=.5,drag=null;try{const saved=Number(localStorage.getItem('timecard-pane-ratio'));if(saved>0&&saved<1)ratio=saved;}catch{}
-  const apply=value=>{ratio=paneRatio(value,workspace.clientWidth);workspace.style.setProperty('--pane-ratio',ratio);splitter.setAttribute('aria-valuenow',String(Math.round(ratio*100)));try{localStorage.setItem('timecard-pane-ratio',String(ratio));}catch{}onChange();};
+export function bindPaneSplitter(workspace,splitter,onChange,{property='--pane-ratio',storageKey='timecard-pane-ratio',initial=.5}={}){
+  let ratio=.5,drag=null,context=null;
+  const resolve=value=>typeof value==='function'?value():value;
+  function refresh(){const key=resolve(storageKey);if(key!==context){context=key;ratio=resolve(initial);try{const saved=Number(localStorage.getItem(key));if(saved>0&&saved<1)ratio=saved;}catch{}}if(workspace.clientWidth>0)ratio=paneRatio(ratio,workspace.clientWidth);workspace.style.setProperty(property,ratio);splitter.setAttribute('aria-valuenow',String(Math.round(ratio*100)));}
+  const apply=value=>{refresh();ratio=paneRatio(value,workspace.clientWidth);workspace.style.setProperty(property,ratio);splitter.setAttribute('aria-valuenow',String(Math.round(ratio*100)));try{localStorage.setItem(context,String(ratio));}catch{}onChange();};
   splitter.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();drag=event.pointerId;splitter.setPointerCapture(drag);});
   splitter.addEventListener('pointermove',event=>{if(drag!==event.pointerId)return;const rect=workspace.getBoundingClientRect();apply((event.clientX-rect.left)/rect.width);});
   const end=()=>{if(drag!==null&&splitter.hasPointerCapture(drag))splitter.releasePointerCapture(drag);drag=null;};
   splitter.addEventListener('pointerup',end);splitter.addEventListener('pointercancel',end);
-  splitter.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home'].includes(event.key))return;event.preventDefault();apply(event.key==='Home'?.5:ratio+(event.key==='ArrowRight'?.02:-.02));});
-  ratio=paneRatio(ratio,workspace.clientWidth);workspace.style.setProperty('--pane-ratio',ratio);splitter.setAttribute('aria-valuenow',String(Math.round(ratio*100)));
+  splitter.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home'].includes(event.key))return;event.preventDefault();apply(event.key==='Home'?resolve(initial):ratio+(event.key==='ArrowRight'?.02:-.02));});
+  refresh();return {refresh,get ratio(){return ratio;}};
 }

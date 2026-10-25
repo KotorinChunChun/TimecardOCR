@@ -1,6 +1,12 @@
+import {validateCardLayout} from './card-geometry.mjs';
+import {validateColorCleanup} from './color-tools.mjs';
+import {CARD_FIELDS,validateCardFields,cardRegions,isRetiredCardRegion} from './card-fields.mjs';
+import {validateCastConfig,invalidateCast} from './casting.mjs';
 export const VERSION = '1.1.0';
 export const LABELS = {day:'日',arrival:'出勤',interim_out:'外出',interim_in:'戻り',departure:'退勤',overtime:'残業',subtotal:'小計',arrival_stamp:'出勤日',departure_stamp:'退勤日'};
-export const columnLabel=c=>c.label?.trim()||LABELS[c.name]||c.name;
+export const columnHeadingLabel=(c,index)=>c.label?.trim()||`列${index+1}`;
+export const columnLabel=(c,index)=>c.label?.trim()||LABELS[c.name]||(Number.isInteger(index)&&index>=0?columnHeadingLabel(c,index):c.name);
+export const columnChoiceLabel=(c,index)=>{const title=columnLabel(c,index),number=`列${index+1}`;return title===number?number:`${number} · ${title}`;};
 export const rowLabel=(t,i)=>t.row_labels?.[i]?.trim()||`${t.header_rows?.includes(i)?'見':'行'}${i+1}`;
 export const FLAG_LABELS = {missing_or_blank:'空欄・未認識',low_confidence:'低信頼度',invalid_time:'時刻形式を確認',cross_month_date_unresolved:'年月日未確定',variant_disagreement:'青除去候補と相違',manual_review:'目視確認',not_processed:'未処理'};
 const int = (v,min,max) => Number.isInteger(v) && v >= min && v <= max;
@@ -10,6 +16,11 @@ export const rowId=(t,i)=>t.row_ids?.[i]??'r'+String(i+1).padStart(2,'0');
 export async function sha256Hex(data){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),b=>b.toString(16).padStart(2,'0')).join('');}
 export function validateTemplate(input) {
   const t=JSON.parse(JSON.stringify(input));
+  // 旧既定だけを一度移行する。以後の手動の見出し指定は変更しない。
+  if(t.name==='アマノタイムカード'&&t.columns?.length===9&&t.columns[0]?.name==='day'&&t.columns[8]?.name==='subtotal'&&t.amano_header_revision!==1){
+    if(JSON.stringify(t.header_columns)==='[8]')t.header_columns=[0];
+    t.amano_header_revision=1;
+  }
   if(!Array.isArray(t.size)||t.size.length!==2||!t.size.every(v=>int(v,32,3200))||t.size[0]*t.size[1]>8000000) throw Error('補正サイズは32〜3200px、800万画素以内にしてください。');
   const [w,h]=t.size;
   if(!Array.isArray(t.row_edges)||t.row_edges.length<2||t.row_edges.length>65||!t.row_edges.every((v,i,a)=>int(v,0,h)&&(!i||v>a[i-1]))) throw Error('行境界は画像内の昇順の整数で指定してください（最大64行）。');
@@ -20,6 +31,8 @@ export function validateTemplate(input) {
     if(typeof c.name!=='string'||!IDENTIFIER.test(c.name)||names.has(c.name)) throw Error('列名は重複しない英数字・アンダースコアにしてください。');
     if(c.label==='出勤印')c.label='出勤日';if(c.label==='退勤印')c.label='退勤日';
     names.add(c.name);c.kind??='text';c.direction??='horizontal';
+    if(c.cast!==undefined)c.cast=validateCastConfig(c.cast,c);
+    if(c.color_cleanup!==undefined)c.color_cleanup=validateColorCleanup(c.color_cleanup);
     if(c.rotation_degrees!==undefined&&(!finite(c.rotation_degrees)||Math.abs(c.rotation_degrees)>180))throw Error('列の回転角度は−180〜180度にしてください。');
     if(c.label!==undefined&&(typeof c.label!=='string'||c.label.length>80))throw Error('列の見出し名は80文字以内で指定してください。');
     if(!Array.isArray(c.x)||c.x.length!==2||!c.x.every(x=>int(x,0,w))||c.x[0]>=c.x[1]||!KINDS.includes(c.kind)||!direction(c.direction)) throw Error('列範囲・種類・方向が不正です。');
@@ -34,9 +47,17 @@ export function validateTemplate(input) {
   if(!Array.isArray(t.blue_hue)||t.blue_hue.length!==2||!t.blue_hue.every(v=>int(v,0,179))||t.blue_hue[0]>t.blue_hue[1]||!int(t.blue_saturation,0,255))throw Error('青色除去の色範囲が不正です。');
   if(t.snap_rows_to_blue_lines)throw Error('このブラウザー版では行境界を直接設定してください。snap_rows_to_blue_linesをfalseにしてください。');
   if(!int(t.row_padding,0,40)||t.row_edges.some((v,i,a)=>i&&v-a[i-1]<=2*(t.row_paddings?.[i-1]??t.row_padding))||!finite(t.confidence_threshold)||t.confidence_threshold<0||t.confidence_threshold>1) throw Error('行の余白または信頼度の設定が不正です。');
+  t.card_fields=validateCardFields(t.card_fields);
+  for(const field of t.card_fields)if(field.cast!==undefined)field.cast=validateCastConfig(field.cast,field);
+  t.card_layout=validateCardLayout(t.card_layout);
+  if(t.card_coordinate_space!==undefined&&!['original_image','card_image'].includes(t.card_coordinate_space))throw Error('カード情報の座標基準が不正です。');
+  if(t.card_coordinate_space==='card_image'&&!t.card_layout)throw Error('カード基準の用紙定義にはカード補正サイズが必要です。');
+  if(t.table_method!==undefined&&!['affine','perspective'].includes(t.table_method))throw Error('表の補正方法が不正です。');
+  if(t.card_reference_size!==undefined&&(!Array.isArray(t.card_reference_size)||t.card_reference_size.length!==2||!t.card_reference_size.every(n=>int(n,1,32000))))throw Error('カード情報の元画像サイズが不正です。');
+  if(t.card_fields.some(f=>f.box)&&!t.card_reference_size)throw Error('カード情報の元画像の参照サイズを指定してください。');
   t.extra_regions??=[];
   if(!Array.isArray(t.extra_regions)||t.extra_regions.length>40) throw Error('追加領域が多すぎます。');
-  const ids=new Set(),cellIds=new Set(t.columns.flatMap(c=>t.row_edges.slice(1).map((_,i)=>`${rowId(t,i)}_${c.name}`)));
+  const ids=new Set(CARD_FIELDS.map(f=>'card_'+f.key)),cellIds=new Set(t.columns.flatMap(c=>t.row_edges.slice(1).map((_,i)=>`${rowId(t,i)}_${c.name}`)));
   for(const r of t.extra_regions){
     if(typeof r.id!=='string'||!IDENTIFIER.test(r.id)||ids.has(r.id)||cellIds.has(r.id)) throw Error('追加領域IDが不正です。');
     ids.add(r.id);r.kind??='text';r.direction??='horizontal';r.column_name??=r.id;
@@ -44,7 +65,8 @@ export function validateTemplate(input) {
     if(!Array.isArray(r.bbox)||r.bbox.length!==4||!r.bbox.every(v=>int(v,0,32000))||r.bbox[0]>=r.bbox[2]||r.bbox[1]>=r.bbox[3]||!direction(r.direction)||!KINDS.includes(r.kind)||!['original_image',undefined].includes(r.source)) throw Error('追加領域が不正です。');
     if(r.source!=='original_image'&&(r.bbox[2]>w||r.bbox[3]>h)) throw Error('追加領域が補正画像の外にあります。');
   }
-  if((t.row_edges.length-1)*t.columns.length+t.extra_regions.length>500) throw Error('一度に読み取るセルは500件以内にしてください。');
+  t.extra_regions=t.extra_regions.filter(r=>!isRetiredCardRegion(r));
+  if((t.row_edges.length-1)*t.columns.length+t.extra_regions.length+t.card_fields.filter(f=>f.box).length>500) throw Error('一度に読み取るセルは500件以内にしてください。');
   return t;
 }
 export function solve(matrix,values){
@@ -72,29 +94,34 @@ export function calibration(points,method,width,height,size){
   const [w,h]=size;const dest=n===3?[[0,0],[w-1,0],[0,h-1]]:[[0,0],[w-1,0],[w-1,h-1],[0,h-1]];
   return {method,source_points:points.map(p=>[...p]),image_size:[width,height],matrix:transform(points,dest),inverse:transform(dest,points)};
 }
-export function regions(t){
+export function regions(t,originalSize){
   const result=[];
   t.row_edges.slice(1).forEach((bottom,i)=>{
     const header=!!t.header_rows?.includes(i),padding=t.row_paddings?.[i]??t.row_padding;
-    t.columns.forEach((c,j)=>result.push({id:`${rowId(t,i)}_${c.name}`,row_index:i+1,column_index:j,column_name:c.name,is_header_row:header,is_header_column:!!t.header_columns?.includes(j),kind:header?'text':c.kind,direction:header?'horizontal':c.direction,rotation_degrees:header?0:c.rotation_degrees??0,bbox:[c.x[0],t.row_edges[i]+padding,c.x[1],bottom-padding]}));
+    t.columns.forEach((c,j)=>result.push({id:`${rowId(t,i)}_${c.name}`,row_index:i+1,column_index:j,column_name:c.name,color_cleanup:c.color_cleanup??null,is_header_row:header,is_header_column:!!t.header_columns?.includes(j),kind:header?'text':c.kind,direction:header?'horizontal':c.direction,rotation_degrees:header?0:c.rotation_degrees??0,bbox:[c.x[0],t.row_edges[i]+padding,c.x[1],bottom-padding]}));
   });
-  return result.concat(t.extra_regions.map(r=>({...r,row_index:0})));
+  return result.concat(t.extra_regions.filter(r=>!isRetiredCardRegion(r)).map(r=>({...r,row_index:0})),cardRegions(t,originalSize));
 }
 export function normalize(raw,kind,confidence,threshold=.9){
   const value=String(raw).normalize('NFKC').trim(),flags=[];
   if(!value)flags.push('missing_or_blank');else if(confidence<threshold)flags.push('low_confidence');
   if(value&&((kind==='time'&&!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(value))||(kind==='duration'&&!/^\d{1,3}:[0-5]\d$/.test(value))))flags.push('invalid_time');
-  if(kind==='day')flags.push('cross_month_date_unresolved');if(kind==='text')flags.push('manual_review');
+  if(kind==='day')flags.push('cross_month_date_unresolved');
   return {value,flags};
 }
 export function correctCell(cell,value,reason='',reviewed=false,threshold){
-  const previous=cell.value,oldFlags=[...cell.flags];
-  cell.value=String(value);cell.reviewed=!!reviewed;
-  const checks=normalize(cell.value,cell.kind,cell.confidence,threshold).flags,flags=reviewed?checks.filter(f=>f==='cross_month_date_unresolved'||f==='invalid_time'):[...oldFlags,...checks];
+  const previous=cell.value,oldFlags=[...cell.flags],oldApproved=typeof cell.approved==='boolean'?cell.approved:cell.reviewed===true,oldApprovedAt=cell.approved_at??null,at=new Date().toISOString();
+  cell.value=String(value);
+  const changed=previous!==cell.value,checks=normalize(cell.value,cell.kind,cell.confidence,threshold).flags,flags=[...oldFlags.filter(f=>!['missing_or_blank','invalid_time','manual_review','low_confidence'].includes(f)),...checks];
   // 未処理セルを確認済みにしても、OCRを実行したことにはしない。
   if(oldFlags.includes('not_processed'))flags.push('not_processed');
   cell.flags=[...new Set(flags)];
-  cell.history??=[];cell.history.push({at:new Date().toISOString(),old_value:previous,new_value:cell.value,reason:reason.trim(),reviewed:!!reviewed,old_flags:oldFlags,new_flags:[...cell.flags]});
+  const approve=!changed&&reviewed&&!!cell.value.trim()&&!cell.flags.includes('not_processed');
+  cell.approved=!!approve;
+  cell.approved_at=cell.approved?at:null;
+  cell.reviewed=cell.approved;
+  cell.history??=[];cell.history.push({event:changed?'correction':approve?'approval':'correction',at,old_value:previous,new_value:cell.value,reason:reason.trim(),reviewed:cell.reviewed,old_flags:oldFlags,new_flags:[...cell.flags],old_approved:oldApproved,new_approved:cell.approved,old_approved_at:oldApprovedAt,new_approved_at:cell.approved_at});
+  if(changed&&cell.cast)cell.cast=invalidateCast(cell).cast;
   return cell;
 }
 export function spreadsheet(value){const s=String(value??'');return /^[\t\r\n]/.test(s)||/^[=+\-@]/.test(s.trimStart())?"'"+s:s;}
@@ -103,7 +130,7 @@ export function tableRows(cells,t){
   return [['row_index','resolved_date',...t.columns.map(c=>c.name),'review_flags'],...Array.from({length:t.row_edges.length-1},(_,i)=>i).filter(i=>!t.header_rows?.includes(i)).map(i=>{
     const row=cells.filter(c=>c.row_index===i+1);return [i+1,'',...t.columns.map(col=>row.find(c=>c.column_name===col.name)?.value??''),JSON.stringify(Object.fromEntries(row.filter(c=>c.flags.length).map(c=>[c.column_name,c.flags])))];})];
 }
-export function evidenceRows(cells){return [['id','row_index','column_name','kind','raw_text','normalized_text','confidence','flags','blue_filtered_text','bbox','history'],...cells.map(c=>[c.id,c.row_index,c.column_name,c.kind,c.raw,c.value,c.confidence,JSON.stringify(c.flags),c.filtered??'',JSON.stringify(c.bbox),JSON.stringify(c.history??[])])];}
+export function evidenceRows(cells){return [['id','row_index','column_name','kind','raw_text','normalized_text','confidence','flags','blue_filtered_text','bbox','history','approved','approved_at'],...cells.map(c=>[c.id,c.row_index,c.column_name,c.kind,c.raw,c.value,c.confidence,JSON.stringify(c.flags),c.filtered??'',JSON.stringify(c.bbox),JSON.stringify(c.history??[]),typeof c.approved==='boolean'?c.approved:c.reviewed===true,c.approved_at??''])];}
 export function decodeCTC(data,dims,characters){
   const [n,time,classes]=dims;if(n!==1||classes!==characters.length||data.length!==time*classes)throw Error('OCRモデルと文字辞書の形式が一致しません。');
   let text='',total=0,count=0,previous=-1;

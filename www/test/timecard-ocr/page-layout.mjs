@@ -1,4 +1,5 @@
 import {planAtlas,preparedSize,dominantColor} from './ocr-prep.mjs';
+import {CARD_FIELDS} from './card-fields.mjs';
 export function atlasBackgrounds(layout,colors){
   const rows=[];
   for(const s of [...layout.slots].sort((a,b)=>a.y+a.height/2-b.y-b.height/2||a.x-b.x)){const center=s.y+s.height/2;let row=rows.at(-1);if(!row||Math.abs(row.center-center)>1){row={center,slots:[],top:s.y,bottom:s.y+s.height};rows.push(row);}row.slots.push(s);row.top=Math.min(row.top,s.y);row.bottom=Math.max(row.bottom,s.y+s.height);}
@@ -17,6 +18,19 @@ export function regionSize(region){
   return preparedSize(width,height,region.rotation_degrees??0);
 }
 export function wholeAtlasLayout(regions){
+  if(!regions.some(r=>r.card_field))return tableAtlasLayout(regions);
+  const cardFields=regions.filter(r=>r.card_field).sort((a,b)=>CARD_FIELDS.findIndex(f=>f.key===a.card_field)-CARD_FIELDS.findIndex(f=>f.key===b.card_field)),tableRegions=regions.filter(r=>!r.card_field);
+  const body=tableRegions.length?tableAtlasLayout(tableRegions,{preserveGrid:true}):null,items=cardFields.map(r=>({id:r.id,...regionSize(r)}));
+  const pages=planAtlas(items,{gap:48,maxWidth:Math.max(1000,body?.width??0),maxHeight:16000,maxItems:500});
+  if(pages.length!==1)throw Error('1枚の結合画像に収まりません。用紙サイズを小さくしてください。');
+  const header=pages[0],rowHeights=new Map();
+  for(const s of header.slots)rowHeights.set(s.y,Math.max(rowHeights.get(s.y)??0,s.height));
+  for(const s of header.slots)s.y+=Math.floor((rowHeights.get(s.y)-s.height)/2);
+  const offset=header.height-48,width=Math.max(header.width,body?.width??0),height=body?offset+body.height:header.height;
+  if(width>4096||height>16000||width*height>48000000)throw Error('結合画像が大きすぎます。読取範囲や用紙サイズを小さくしてください。');
+  return {width,height,slots:[...header.slots,...(body?.slots??[]).map(s=>({...s,y:s.y+offset}))]};
+}
+function tableAtlasLayout(regions,{preserveGrid=false}={}){
   const items=regions.map(r=>({id:r.id,...regionSize(r)})),area=items.reduce((sum,s)=>sum+(s.width+48)*(s.height+48),0);
   if(!items.length||area>48000000)throw Error('結合画像が大きすぎます。読取範囲や用紙サイズを小さくしてください。');
   // 行列情報がある場合は元の行・列を揃える。大きさ順の詰込みで文字行を崩さない。
@@ -29,6 +43,7 @@ export function wholeAtlasLayout(regions){
     const slots=grid.map(({region:r,item:s})=>({...s,x:xs.get(r.column_index)+Math.floor((widths.get(r.column_index)-s.width)/2),y:ys.get(r.row_index)+Math.floor((heights.get(r.row_index)-s.height)/2)}));
     if(extra.length){const pages=planAtlas(extra,{gap:48,maxWidth:Math.max(1000,width),maxHeight:16000,maxItems:500});if(pages.length===1){slots.push(...pages[0].slots.map(s=>({...s,y:s.y+height})));width=Math.max(width,pages[0].width);height+=pages[0].height;}else height=Infinity;}
     if(width<=4096&&height<=16000&&width*height<=48000000)return {width,height,slots};
+    if(preserveGrid)throw Error('行列を保った結合画像が大きすぎます。読取範囲や用紙サイズを小さくしてください。');
   }
   const width=Math.max(1000,Math.min(4096,Math.ceil(Math.sqrt(area*1.3))));
   const pages=planAtlas(items,{gap:48,maxWidth:width,maxHeight:16000,maxItems:500});

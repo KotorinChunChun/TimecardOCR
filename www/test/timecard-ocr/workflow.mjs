@@ -1,4 +1,7 @@
 import {validateTemplate,mapPoint,regions,rowId} from './core.mjs';
+import {migrateApproval,invalidateApproval} from './review-tools.mjs';
+import {isRetiredCardRegion} from './card-fields.mjs';
+import {invalidateCast,validateSavedCast} from './casting.mjs';
 
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const bounded=(v,min,max)=>Math.max(min,Math.min(max,v));
@@ -129,10 +132,10 @@ export function reconcileCells(previous,next,inverse){
   const byId=new Map(previous.map(c=>[c.id,c]));
   return next.map(r=>{
     const old=byId.get(r.id),corners=[[r.bbox[0],r.bbox[1]],[r.bbox[2],r.bbox[1]],[r.bbox[2],r.bbox[3]],[r.bbox[0],r.bbox[3]]],polygon=r.source==='original_image'?corners:corners.map(p=>mapPoint(inverse,p));
-    const keep=old&&equal(old.bbox,r.bbox)&&old.kind===r.kind&&old.direction===r.direction&&(old.rotation_degrees??0)===(r.rotation_degrees??0)&&old.source===r.source;
+    const keep=old&&equal(old.input_revision??null,r.input_revision??null)&&equal(old.bbox,r.bbox)&&old.kind===r.kind&&old.direction===r.direction&&(old.rotation_degrees??0)===(r.rotation_degrees??0)&&old.source===r.source&&equal(old.color_cleanup??null,r.color_cleanup??null);
     const history=keep?old.history:[...(old?.history??[])];
-    if(!keep&&old&&(old.raw||old.value||history.length))history.push({at:new Date().toISOString(),old_value:old.value,new_value:'',reason:'切出し範囲の変更',reviewed:false,old_raw:old.raw,old_bbox:old.bbox,new_bbox:r.bbox,old_flags:old.flags,new_flags:['not_processed']});
-    return {...(keep?old:{raw:'',value:'',confidence:0,flags:['not_processed'],filtered:null,history,reviewed:false}),...r,original_polygon:polygon};
+    if(!keep&&old&&(old.raw||old.value||history.length||migrateApproval(old).approved))history.push({event:'input_change',at:new Date().toISOString(),old_value:old.value,new_value:'',reason:'切出し範囲・画像処理の変更',reviewed:false,old_raw:old.raw,old_bbox:old.bbox,new_bbox:r.bbox,old_color_cleanup:old.color_cleanup??null,new_color_cleanup:r.color_cleanup??null,old_flags:old.flags,new_flags:['not_processed'],old_approved:migrateApproval(old).approved,new_approved:false,old_approved_at:old.approved_at??null,new_approved_at:null});
+    return {...(keep?migrateApproval(old):{raw:'',value:'',confidence:0,flags:['not_processed'],filtered:null,history,reviewed:false,approved:false,approved_at:null}),...r,original_polygon:polygon};
   });
 }
 export function ocrTargets(cells,selection={type:'all'}){
@@ -143,16 +146,19 @@ export function ocrTargets(cells,selection={type:'all'}){
 }
 export function mergeOCR(previous,result){
   const history=[...(previous.history??[])];
-  if(previous.raw||history.length)history.push({at:new Date().toISOString(),old_value:previous.value,new_value:result.value,reason:'OCRで再読取り',reviewed:false,old_raw:previous.raw,new_raw:result.raw,old_flags:previous.flags,new_flags:result.flags});
-  return {...previous,...result,history,original_polygon:previous.original_polygon};
+  if(previous.raw||history.length||migrateApproval(previous).approved)history.push({event:'ocr',at:new Date().toISOString(),old_value:previous.value,new_value:result.value,reason:'OCRで再読取り',reviewed:false,old_raw:previous.raw,new_raw:result.raw,old_flags:previous.flags,new_flags:result.flags,old_approved:migrateApproval(previous).approved,new_approved:false,old_approved_at:previous.approved_at??null,new_approved_at:null});
+  return invalidateCast(invalidateApproval({...previous,...result,history,original_polygon:previous.original_polygon}));
 }
-export function validateWorkCells(cells,template){
-  const t=validateTemplate(template),expected=new Map(regions(t).map(r=>[r.id,r]));
+export function validateWorkCells(cells,template,originalSize){
+  const t=validateTemplate(template),expected=new Map(regions(t,originalSize).map(r=>[r.id,r]));
+  if(Array.isArray(cells))cells=cells.filter(c=>!isRetiredCardRegion(c));
   if(!Array.isArray(cells)||cells.length!==expected.size||new Set(cells.map(c=>c?.id)).size!==expected.size)throw Error('保存したセル数・IDと用紙設定が一致しません。');
   for(const c of cells){
+    if(c.cast!==undefined)validateSavedCast(c.cast);
     const r=expected.get(c?.id),column=r&&t.columns[r.column_index];
     const orientation=r&&((c.rotation_degrees??0)===(r.rotation_degrees??0)&&c.direction===r.direction||r.is_header_row&&column&&(c.rotation_degrees??0)===(column.rotation_degrees??0)&&c.direction===column.direction);
-    if(!r||!equal(c.bbox,r.bbox)||c.kind!==r.kind||!orientation||typeof c.raw!=='string'||typeof c.value!=='string'||c.raw.length>10000||c.value.length>10000||!Number.isFinite(c.confidence)||!Array.isArray(c.flags)||c.flags.some(f=>typeof f!=='string')||!Array.isArray(c.history)||c.history.some(h=>!h||!['at','old_value','new_value','reason'].every(k=>typeof h[k]==='string'))||c.filteredConfidence!=null&&!Number.isFinite(c.filteredConfidence))throw Error('作業結果の形式または切出し範囲が不正です。');
+    if(!r||c.source!==r.source||c.card_field!==r.card_field||!equal(c.bbox,r.bbox)||!equal(c.color_cleanup??null,r.color_cleanup??null)||c.kind!==r.kind||!orientation||typeof c.raw!=='string'||typeof c.value!=='string'||c.raw.length>10000||c.value.length>10000||!Number.isFinite(c.confidence)||!Array.isArray(c.flags)||c.flags.some(f=>typeof f!=='string')||!Array.isArray(c.history)||c.history.some(h=>!h||!['at','old_value','new_value','reason'].every(k=>typeof h[k]==='string'))||c.filteredConfidence!=null&&!Number.isFinite(c.filteredConfidence))throw Error('作業結果の形式または切出し範囲が不正です。');
+    if(c.approved!==undefined&&typeof c.approved!=='boolean'||c.approved_at!=null&&typeof c.approved_at!=='string'||c.reviewed!==undefined&&typeof c.reviewed!=='boolean'||c.history.some(h=>h.event!==undefined&&typeof h.event!=='string'||['old_approved','new_approved'].some(k=>h[k]!==undefined&&typeof h[k]!=='boolean')||['old_approved_at','new_approved_at'].some(k=>h[k]!=null&&typeof h[k]!=='string')))throw Error('承認状態または承認履歴の形式が不正です。');
   }
-  return cells;
+  return cells.map(c=>{const r=expected.get(c.id);return {...migrateApproval(c),is_header_row:!!r.is_header_row,is_header_column:!!r.is_header_column};});
 }

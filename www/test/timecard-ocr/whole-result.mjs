@@ -22,10 +22,11 @@ export function mapWholeResult(items,slots){
   }
   return {cells,unassigned};
 }
-export async function recognizeWholeImage(job,{recognize,inputEvidence,onCell=()=>{},now=()=>performance.now()}){
-  const started=now(),input=await inputEvidence(job.image),first=await recognize(job.image),mapped=mapWholeResult(first.items,job.layout.slots);
+export async function recognizeWholeImage(job,{recognize,inputEvidence,onCell=()=>{},onStage=()=>{},now=()=>performance.now()}){
+  const started=now(),input=await inputEvidence(job.image),first=await recognize(job.image,{variant:'original'}),mapped=mapWholeResult(first.items,job.layout.slots);
   let second,blue;
-  if(job.filteredImage){second=await recognize(job.filteredImage);blue=mapWholeResult(second.items,job.layout.slots);}
+  if(job.filteredImage){second=await recognize(job.filteredImage,{variant:'blue'});blue=mapWholeResult(second.items,job.layout.slots);}
+  onStage({stage:'mapping'});
   const cells=job.regions.map((r,index)=>{
     const raw=mapped.cells.get(r.id)??{text:'',confidence:0},filtered=blue?.cells.get(r.id),n=normalize(raw.text,r.kind,raw.confidence,job.threshold);
     if(filtered&&raw.text!==filtered.text)n.flags.push('variant_disagreement');

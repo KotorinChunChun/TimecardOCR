@@ -8,8 +8,8 @@ import {validateTemplate,calibration,mapPoint,normalize,correctCell,csv,tableRow
 import {sqliteBytes} from '../www/test/timecard-ocr/storage.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const original=JSON.parse(fs.readFileSync(path.join(root,'tools/timecard-ocr/templates/sample_timecard.json'),'utf8'));
-test('提供版テンプレートは149領域・文字方向・原画像領域を維持',()=>{
-  const t=validateTemplate(original),r=regions(t);assert.equal(r.length,149);assert.equal(r[0].id,'r01_day');assert.equal(r.at(-1).source,'original_image');assert.equal(r.find(x=>x.id==='r01_arrival_stamp').direction,'rotate_cw');
+test('提供版の表・補助見出し・文字方向を保ち、旧共通2項目をOCR対象から外す',()=>{
+  const t=validateTemplate(original),r=regions(t);assert.equal(r.length,147);assert.equal(r[0].id,'r01_day');assert.deepEqual(t.extra_regions.map(x=>x.id),['date_header','regular_in_header','regular_out_header']);assert.ok(!r.some(x=>['title','card_id'].includes(x.id)));assert.equal(r.find(x=>x.id==='r01_arrival_stamp').direction,'rotate_cw');
 });
 test('不正な列範囲・行境界・重複・過大領域は推論前に拒否',()=>{
   for(const change of [t=>t.columns[0].x=[100,20],t=>t.row_edges[1]=t.row_edges[0],t=>t.columns.push(t.columns[0]),t=>t.size=[100000,100000],t=>t.row_padding=100,t=>t.columns[0].direction='eval(1)',t=>t.extra_regions.push(t.extra_regions[0])]){const t=structuredClone(original);change(t);assert.throws(()=>validateTemplate(t));}
@@ -29,7 +29,7 @@ test('CTC空白と連続重複を除き、空白を挟んだ同一文字を維�
   const indices=[0,1,1,0,1,2,2],data=new Float32Array(indices.length*3);indices.forEach((k,i)=>data[i*3+k]=.95);const r=decodeCTC(data,[1,indices.length,3],['','8',':']);assert.equal(r.text,'88:');assert.ok(r.confidence>.94);assert.throws(()=>decodeCTC(data,[1,7,4],['','8',':']));
 });
 test('理由と照合チェックは任意で、原文・履歴・日付保留を維持',()=>{
-  const c={raw:'２１',value:'21',kind:'day',confidence:.7,flags:['low_confidence','cross_month_date_unresolved'],history:[]};correctCell(c,'22');assert.equal(c.raw,'２１');assert.equal(c.value,'22');assert.equal(c.reviewed,false);assert.ok(c.flags.includes('low_confidence'));assert.equal(c.history[0].reason,'');assert.equal(c.history[0].old_value,'21');assert.equal(c.history[0].new_value,'22');correctCell(c,'22','  ',true);assert.deepEqual(c.flags,['cross_month_date_unresolved']);assert.equal(c.history[1].reason,'');assert.equal(c.history[1].reviewed,true);
+  const c={raw:'２１',value:'21',kind:'day',confidence:.7,flags:['low_confidence','cross_month_date_unresolved'],history:[]};correctCell(c,'22');assert.equal(c.raw,'２１');assert.equal(c.value,'22');assert.equal(c.reviewed,false);assert.ok(c.flags.includes('low_confidence'));assert.equal(c.history[0].reason,'');assert.equal(c.history[0].old_value,'21');assert.equal(c.history[0].new_value,'22');correctCell(c,'22','  ',true);assert.deepEqual(c.flags,['cross_month_date_unresolved','low_confidence']);assert.equal(c.approved,true);assert.equal(c.history[1].reason,'');assert.equal(c.history[1].reviewed,true);
 });
 test('確認済みでも不正時刻・OCR未処理を勝手に解除しない',()=>{
   const c={raw:'',value:'',kind:'time',confidence:0,flags:['not_processed'],history:[]};correctCell(c,'25:00','手動転記',true);assert.ok(c.flags.includes('not_processed'));assert.ok(c.flags.includes('invalid_time'));

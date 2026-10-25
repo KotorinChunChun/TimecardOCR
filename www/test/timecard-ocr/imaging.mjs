@@ -1,3 +1,4 @@
+import {removeSelectedColor} from './color-tools.mjs';
 import {mapPoint,sha256Hex} from './core.mjs';
 import {perimeterColor,preparedSize,recognitionSize} from './ocr-prep.mjs';
 export function canvas(w,h){const c=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):Object.assign(document.createElement('canvas'),{width:w,height:h});return c;}
@@ -25,16 +26,18 @@ export function removeBlue(source,hue=[75,125],saturation=45){
   }
   ctx.putImageData(im,0,0);return out;
 }
-export function crop(source,box,direction='horizontal'){
+export function crop(source,box,direction='horizontal',cleanup=null){
   const [x,y,right,bottom]=box,w=right-x,h=bottom-y;
   if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
+  let input=source,left=x,topY=y;
+  if(cleanup?.enabled!==false&&cleanup){input=canvas(w,h);const context=input.getContext('2d');context.drawImage(source,x,y,w,h,0,0,w,h);context.putImageData(removeSelectedColor(context.getImageData(0,0,w,h),cleanup),0,0);left=topY=0;}
   const count=direction.startsWith('vertical_stack:')?Number(direction.split(':')[1]):1;
   const rotated=direction==='rotate_cw'||direction==='rotate_ccw';
   const out=canvas(rotated?h:w*count,rotated?w:Math.ceil(h/count)),ctx=out.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,out.width,out.height);
-  if(rotated){if(direction==='rotate_cw'){ctx.translate(h,0);ctx.rotate(Math.PI/2);}else{ctx.translate(0,w);ctx.rotate(-Math.PI/2);}ctx.drawImage(source,x,y,w,h,0,0,w,h);}
-  else if(count>1){let top=y;for(let i=0;i<count;i++){const slice=Math.floor(h/count)+(i<h%count?1:0);ctx.drawImage(source,x,top,w,slice,i*w,0,w,slice);top+=slice;}}
-  else ctx.drawImage(source,x,y,w,h,0,0,w,h);
-  return out;
+  if(rotated){if(direction==='rotate_cw'){ctx.translate(h,0);ctx.rotate(Math.PI/2);}else{ctx.translate(0,w);ctx.rotate(-Math.PI/2);}ctx.drawImage(input,left,topY,w,h,0,0,w,h);}
+  else if(count>1){let top=topY;for(let i=0;i<count;i++){const slice=Math.floor(h/count)+(i<h%count?1:0);ctx.drawImage(input,left,top,w,slice,i*w,0,w,slice);top+=slice;}}
+  else ctx.drawImage(input,left,topY,w,h,0,0,w,h);
+  if(input!==source)input.width=input.height=1;return out;
 }
 export function recInput(source,{compact=false}={}){
   const {height:h,width:w,contentWidth:rw}=recognitionSize(source.width,source.height,compact),c=canvas(rw,h),ctx=c.getContext('2d');ctx.drawImage(source,0,0,rw,h);
@@ -44,15 +47,16 @@ export function recInput(source,{compact=false}={}){
 }
 export function regionColor(source,region){const [x,y,right,bottom]=region.bbox;return perimeterColor(source.getContext('2d',{willReadFrequently:true}).getImageData(x,y,right-x,bottom-y));}
 export function prepareCrop(source,region,{paddingColor}={}){
-  const cut=crop(source,region.bbox,region.direction);
+  const cut=crop(source,region.bbox,region.direction,region.color_cleanup);
   const color=paddingColor??regionColor(source,region),angle=region.rotation_degrees??0,size=preparedSize(cut.width,cut.height,angle),out=canvas(size.width,size.height),target=out.getContext('2d');
   target.fillStyle=`rgb(${color.join(',')})`;target.fillRect(0,0,out.width,out.height);target.translate(out.width/2,out.height/2);target.rotate(angle*Math.PI/180);target.drawImage(cut,-cut.width/2,-cut.height/2);
-  return out;
+  cut.width=cut.height=1;return out;
 }
 // 青除去は画素単位なので、全画像に掛けてから切り出す場合と同じ結果をセル範囲の計算だけで得る。
 export function prepareFilteredCrop(source,region,hue,saturation){
   const [x,y,right,bottom]=region.bbox,w=right-x,h=bottom-y;
   if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
-  const part=canvas(w,h);part.getContext('2d').drawImage(source,x,y,w,h,0,0,w,h);
-  return prepareCrop(removeBlue(part,hue,saturation),{...region,bbox:[0,0,w,h]});
+  const part=canvas(w,h),ctx=part.getContext('2d');ctx.drawImage(source,x,y,w,h,0,0,w,h);
+  if(region.color_cleanup)ctx.putImageData(removeSelectedColor(ctx.getImageData(0,0,w,h),region.color_cleanup),0,0);
+  return prepareCrop(removeBlue(part,hue,saturation),{...region,color_cleanup:null,bbox:[0,0,w,h]});
 }

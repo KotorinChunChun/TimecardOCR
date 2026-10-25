@@ -1,6 +1,6 @@
 import {POINT_PADDING,imageLayout,imagePosition} from './point-tools.mjs';
 import {setColumnRange,setRowBoundary,toggleHeader,translateColumn,translateRow,boxSelection} from './workflow.mjs';
-import {rowLabel} from './core.mjs';
+import {rowLabel,columnHeadingLabel} from './core.mjs';
 
 export function createGridEditor(target,{read,change,selectColumn,selectRow,selectRanges,selectCell,editHeading,start=()=>true,end=()=>{}}){
   let drag=null,suppressClick=false;
@@ -20,7 +20,7 @@ export function createGridEditor(target,{read,change,selectColumn,selectRow,sele
     const selected=t.columns[s.column];if(selected){ctx.fillStyle='#08788312';ctx.fillRect(selected.x[0],0,selected.x[1]-selected.x[0],image.height);selected.x.forEach((x,side)=>{ctx.strokeStyle=side?'#d57a0b':'#087883';ctx.lineWidth=2*u;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,image.height);ctx.stroke();ctx.fillStyle=ctx.strokeStyle;ctx.fillRect(x-5*u,image.height/2-16*u,10*u,32*u);});}
     ctx.font=`bold ${10*u}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
     const label=(text,x,y,width,selected,color)=>{ctx.fillStyle=selected?color:'#fffffff0';ctx.fillRect(x-width/2,y-9*u,width,18*u);ctx.strokeStyle=color;ctx.lineWidth=u;ctx.strokeRect(x-width/2,y-9*u,width,18*u);ctx.fillStyle=selected?'white':color;let shown=text;while(shown.length>1&&ctx.measureText(shown).width>width-5*u)shown=shown.slice(0,-1);ctx.fillText(shown===text?shown:shown.slice(0,-1)+'…',x,y);};
-    t.columns.forEach((c,i)=>label(c.label?.trim()||`${t.header_columns?.includes(i)?'見出し':'列'}${i+1}`,(c.x[0]+c.x[1])/2,-16*u,Math.min(90*u,Math.max(26*u,c.x[1]-c.x[0]-2*u)),t.header_columns?.includes(i),'#714ba3'));
+    t.columns.forEach((c,i)=>label(columnHeadingLabel(c,i),(c.x[0]+c.x[1])/2,-16*u,Math.min(90*u,Math.max(26*u,c.x[1]-c.x[0]-2*u)),t.header_columns?.includes(i),'#714ba3'));
     t.row_edges.slice(1).forEach((bottom,i)=>label(rowLabel(t,i),-16*u,(t.row_edges[i]+bottom)/2,28*u,t.header_rows?.includes(i),'#9a6508'));
     ctx.strokeStyle='#067b87';ctx.lineWidth=3*u;
     for(const i of s.selectedColumns??[]){const c=t.columns[i],x=(c.x[0]+c.x[1])/2,width=Math.min(90*u,Math.max(26*u,c.x[1]-c.x[0]-2*u));ctx.strokeRect(x-width/2,-25*u,width,18*u);}

@@ -1,8 +1,9 @@
 import {sha256Hex} from './core.mjs';
+import {observeOCRStages} from './ocr-progress.mjs';
 import {OcrPipelineRunner,sourcePayloadToMat} from './vendor/paddleocr/whole-pipeline.mjs';
 import {inferenceThreads} from './ocr-prep.mjs';
 
-export async function createWholeEngine(manifest,{threads}={}){
+export async function createWholeEngine(manifest,{threads,onStage=()=>{}}={}){
   const base=new URL('./',import.meta.url),threadCount=inferenceThreads(self.crossOriginIsolated,navigator.hardwareConcurrency,threads);
   const localFetch=async input=>{
     const url=new URL(String(input),base),entry=manifest.files.find(f=>new URL(f.path,base).href===url.href);
@@ -22,15 +23,16 @@ export async function createWholeEngine(manifest,{threads}={}){
   });
   await engine.initialize();
   // 実際のモデル呼出しを数える。SDKの内部バッチ数も含み、外側のAPI回数だけで判断しない。
-  const originalRun=engine.ort.InferenceSession.prototype.run;let current;
+  const originalRun=engine.ort.InferenceSession.prototype.run;let current,currentVariant='original';
+  observeOCRStages(engine,onStage,()=>({variant:currentVariant}));
   engine.ort.InferenceSession.prototype.run=async function(feeds,...args){
     if(current){const tensor=Object.values(feeds)[0];current.push([...tensor.dims]);}
     return originalRun.call(this,feeds,...args);
   };
   return {
     threads:threadCount,
-    async recognize(image){
-      const calls=[];current=calls;
+    async recognize(image,{variant='original'}={}){
+      const calls=[];current=calls;currentVariant=variant;
       try{
         const [result]=await engine.predict({kind:'imageBitmap',imageBitmap:await createImageBitmap(image)});
         const detectionCalls=calls.filter(d=>d[0]===1&&d[2]!==48).length,recognitionCalls=calls.length-detectionCalls;
@@ -38,8 +40,8 @@ export async function createWholeEngine(manifest,{threads}={}){
         return {...result,calls,ocrCalls:1,detectionCalls,recognitionCalls};
       }finally{current=null;}
     },
-    async recognizeCell(image){
-      const cv=engine.cv,data=image.getContext('2d').getImageData(0,0,image.width,image.height),mat=cv.matFromArray(image.height,image.width,cv.CV_8UC4,data.data);
+    async recognizeCell(image,{variant='original'}={}){
+      currentVariant=variant;const cv=engine.cv,data=image.getContext('2d').getImageData(0,0,image.width,image.height),mat=cv.matFromArray(image.height,image.width,cv.CV_8UC4,data.data);
       try{const [value]=await engine.recModel.predict(cv,[mat],{batchSize:1});return {text:value.text,confidence:value.score};}finally{mat.delete();}
     },
     dispose:()=>engine.dispose()

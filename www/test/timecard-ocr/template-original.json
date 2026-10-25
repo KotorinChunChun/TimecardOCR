@@ -37,7 +37,39 @@
       "kind": "day",
       "direction": "horizontal",
       "x1": 0.007352941176470588,
-      "x2": 0.07941176470588235
+      "x2": 0.07941176470588235,
+      "label": "日付",
+      "cast": {
+        "type": "day",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ]
+        ],
+        "compact": false
+      }
     },
     {
       "name": "arrival_stamp",
@@ -49,7 +81,38 @@
       "direction": "rotate_cw",
       "x1": 0.094,
       "x2": 0.12794117647058822,
-      "label": "出勤日"
+      "label": "出勤日",
+      "cast": {
+        "type": "day",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ]
+        ],
+        "compact": false
+      }
     },
     {
       "name": "arrival",
@@ -60,7 +123,50 @@
       "kind": "time",
       "direction": "horizontal",
       "x1": 0.13161764705882353,
-      "x2": 0.2213235294117647
+      "x2": 0.2213235294117647,
+      "cast": {
+        "type": "time",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ],
+          [
+            "=",
+            ":"
+          ],
+          [
+            ";",
+            ":"
+          ],
+          [
+            ".",
+            ":"
+          ]
+        ],
+        "compact": true
+      }
     },
     {
       "name": "interim_out",
@@ -71,7 +177,50 @@
       "kind": "time",
       "direction": "horizontal",
       "x1": 0.23161764705882354,
-      "x2": 0.3639705882352941
+      "x2": 0.3639705882352941,
+      "cast": {
+        "type": "time_or_text",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ],
+          [
+            "=",
+            ":"
+          ],
+          [
+            ";",
+            ":"
+          ],
+          [
+            ".",
+            ":"
+          ]
+        ],
+        "compact": true
+      }
     },
     {
       "name": "interim_in",
@@ -82,7 +231,50 @@
       "kind": "time",
       "direction": "horizontal",
       "x1": 0.37279411764705883,
-      "x2": 0.5044117647058823
+      "x2": 0.5044117647058823,
+      "cast": {
+        "type": "time_or_text",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ],
+          [
+            "=",
+            ":"
+          ],
+          [
+            ";",
+            ":"
+          ],
+          [
+            ".",
+            ":"
+          ]
+        ],
+        "compact": true
+      }
     },
     {
       "name": "departure_stamp",
@@ -94,7 +286,38 @@
       "direction": "rotate_cw",
       "x1": 0.5117647058823529,
       "x2": 0.5397058823529411,
-      "label": "退勤日"
+      "label": "退勤日",
+      "cast": {
+        "type": "day",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ]
+        ],
+        "compact": false
+      }
     },
     {
       "name": "departure",
@@ -105,7 +328,50 @@
       "kind": "time",
       "direction": "horizontal",
       "x1": 0.5411764705882353,
-      "x2": 0.6433823529411765
+      "x2": 0.6433823529411765,
+      "cast": {
+        "type": "time",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ],
+          [
+            "=",
+            ":"
+          ],
+          [
+            ";",
+            ":"
+          ],
+          [
+            ".",
+            ":"
+          ]
+        ],
+        "compact": true
+      }
     },
     {
       "name": "overtime",
@@ -116,7 +382,50 @@
       "kind": "duration",
       "direction": "horizontal",
       "x1": 0.6522058823529412,
-      "x2": 0.8772058823529412
+      "x2": 0.8772058823529412,
+      "cast": {
+        "type": "duration",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ],
+          [
+            "=",
+            ":"
+          ],
+          [
+            ";",
+            ":"
+          ],
+          [
+            ".",
+            ":"
+          ]
+        ],
+        "compact": false
+      }
     },
     {
       "name": "subtotal",
@@ -127,40 +436,231 @@
       "kind": "duration",
       "direction": "horizontal",
       "x1": 0.8838235294117647,
-      "x2": 0.9992647058823529
+      "x2": 0.9992647058823529,
+      "color_cleanup": {
+        "enabled": true,
+        "roi": [
+          0.3485714285714286,
+          0.07569677312956957,
+          0.4228571428571429,
+          1
+        ],
+        "hue": [
+          47,
+          76
+        ],
+        "saturation": [
+          0,
+          30
+        ],
+        "value": [
+          65,
+          100
+        ],
+        "fill": [
+          254,
+          253,
+          233
+        ]
+      },
+      "cast": {
+        "type": "duration",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ],
+          [
+            "=",
+            ":"
+          ],
+          [
+            ";",
+            ":"
+          ],
+          [
+            ".",
+            ":"
+          ]
+        ],
+        "compact": false
+      }
     }
   ],
-  "extra_regions": [
-    {
-      "id": "title",
-      "column_name": "title",
-      "kind": "text",
-      "direction": "horizontal",
-      "bbox": [
-        285,
-        365,
-        655,
-        431
-      ],
-      "source": "original_image"
-    },
-    {
-      "id": "card_id",
-      "column_name": "card_id",
-      "kind": "text",
-      "direction": "horizontal",
-      "bbox": [
-        140,
-        92,
-        230,
-        153
-      ],
-      "source": "original_image"
-    }
-  ],
+  "extra_regions": [],
   "layout_version": 2,
   "header_rows": [
     0
   ],
-  "header_columns": []
+  "header_columns": [
+    0
+  ],
+  "card_fields": [
+    {
+      "key": "number",
+      "box": [
+        0.1938201555926014,
+        0.06432748538011689,
+        0.361561681352703,
+        0.13198380566801612
+      ],
+      "rotation_degrees": 0,
+      "cast": {
+        "type": "code",
+        "on_error": "review",
+        "replacements": [],
+        "compact": false
+      }
+    },
+    {
+      "key": "name",
+      "box": [
+        0.45230709692783994,
+        0.0628879892037786,
+        0.9830302849884893,
+        0.13054430949167783
+      ],
+      "rotation_degrees": 0,
+      "cast": {
+        "type": "text",
+        "on_error": "review",
+        "replacements": [],
+        "compact": false
+      }
+    },
+    {
+      "key": "department",
+      "box": [
+        0.16082182265618797,
+        0.11758884390463331,
+        0.9637812574422482,
+        0.18812415654520911
+      ],
+      "rotation_degrees": 0,
+      "cast": {
+        "type": "text",
+        "on_error": "review",
+        "replacements": [],
+        "compact": false
+      }
+    },
+    {
+      "key": "year_month",
+      "box": [
+        0.35881182027466857,
+        0.2860098965362122,
+        0.9885300071445583,
+        0.34358974358974353
+      ],
+      "rotation_degrees": 0,
+      "cast": {
+        "type": "year_month",
+        "on_error": "review",
+        "replacements": [
+          [
+            "O",
+            "0"
+          ],
+          [
+            "o",
+            "0"
+          ],
+          [
+            "〇",
+            "0"
+          ],
+          [
+            "I",
+            "1"
+          ],
+          [
+            "l",
+            "1"
+          ],
+          [
+            "|",
+            "1"
+          ]
+        ],
+        "compact": false
+      }
+    }
+  ],
+  "blue_hue": [
+    75,
+    125
+  ],
+  "blue_saturation": 45,
+  "card_layout": {
+    "version": 1,
+    "size": [
+      680,
+      1299
+    ],
+    "table_quad": [
+      [
+        0.00306562754314375,
+        0.34804359310747035
+      ],
+      [
+        1,
+        0.34711550166191285
+      ],
+      [
+        0.9999999999999994,
+        0.990993842034915
+      ],
+      [
+        0.00599519356734204,
+        0.9908673460184666
+      ]
+    ]
+  },
+  "card_coordinate_space": "card_image",
+  "card_reference_size": [
+    680,
+    1299
+  ],
+  "table_method": "perspective",
+  "row_labels": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "amano_header_revision": 1
 }
