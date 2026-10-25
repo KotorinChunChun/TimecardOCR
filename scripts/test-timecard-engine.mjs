@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import {initializeWorker} from '../www/test/timecard-ocr/engine-client.mjs';
 import {readFileSync} from 'node:fs';
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-test('一括・個別の実行画面にページOCRへの切替経路を残さない',()=>{
+test('一括は結合画像を渡し、旧Tesseractへの切替を残さない',()=>{
   const app=source('www/test/timecard-ocr/app.mjs'),html=source('www/test/timecard-ocr/index.html'),sw=source('www/test/timecard-ocr/sw.js');
   assert.doesNotMatch(app,/recognizePage|runPageOCR|page-ocr\.mjs|combined-ocr/);assert.doesNotMatch(html,/id="combined-ocr"|この画像全体をOCR|全体OCRの原文/);assert.doesNotMatch(sw,/page-ocr\.mjs|tesseract/);
-  assert.match(app,/regions:rs,mode:selection\.type/);assert.match(html,/PP-OCRv5/);
+  assert.match(app,/regions:rs,mode:selection\.type/);assert.doesNotMatch(html,/aria-label="認識エンジン"/);
 });
 test('必須依存はPP-OCRv5だけとし、旧ページモデルを再取得しない',()=>{
   const manifest=JSON.parse(source('www/test/timecard-ocr/assets.json')),lock=JSON.parse(source('dev/history/v1.1.0/timecard-assets-lock.json'));
-  assert.deepEqual(manifest.files.filter(f=>f.path.endsWith('.onnx')).map(f=>f.path),['models/ppocrv5-rec.onnx']);assert.ok(manifest.files.every(f=>!/(?:tesseract|tessdata)/.test(f.path)));assert.ok(lock.sources.flatMap(g=>g.files).every(f=>!/(?:tesseract|tessdata)/.test(f.path)));
+  assert.deepEqual(manifest.files.filter(f=>f.path.endsWith('.tar')).map(f=>f.path).sort(),['models/ppocrv5-det.tar','models/ppocrv5-rec.tar']);assert.ok(manifest.files.every(f=>!/(?:tesseract|tessdata)/.test(f.path)));assert.ok(lock.sources.flatMap(g=>g.files).every(f=>!/(?:tesseract|tessdata)/.test(f.path)));
 });
 class FakeWorker{
   messages=[];terminated=false;

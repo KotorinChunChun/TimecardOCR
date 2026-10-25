@@ -98,6 +98,37 @@
           "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
         }
       ]
+    },
+    {
+      "url": "https://registry.npmjs.org/@paddleocr/paddleocr-js/-/paddleocr-js-0.4.2.tgz",
+      "format": "tar",
+      "sha256": "3b9ae2ce7214b17cb5a4c5dfd3b6c168a51c0ed442642126e71016ea9be9d114",
+      "files": [
+        {
+          "member": "package/dist/assets/worker-entry-C9UNuyOJ.js",
+          "path": "vendor/paddleocr/whole-pipeline.mjs",
+          "recipe": "paddleocr-worker-adapter-v3",
+          "sha256": "6af8325fea24a757f48996d75b483c2503873527007a58e36e4a3d62eca40b88"
+        }
+      ]
+    },
+    {
+      "url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_server_det_onnx_infer.tar",
+      "format": "raw",
+      "sha256": "cd28389ed2c11dfe02d6a9847ec95ca6153a51bf38bc1c4e2521c1f548188f58",
+      "files": [
+        {
+          "path": "models/ppocrv5-det.tar",
+          "sha256": "cd28389ed2c11dfe02d6a9847ec95ca6153a51bf38bc1c4e2521c1f548188f58"
+        }
+      ]
+    }
+  ],
+  "generated": [
+    {
+      "recipe": "ppocrv5-rec-archive-v1",
+      "path": "models/ppocrv5-rec.tar",
+      "sha256": "e6e26853e1fff8804e566cbe8610d0fb1e973b4de13e43be068d5f3473b2908b"
     }
   ]
 }

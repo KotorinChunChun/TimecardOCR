@@ -1,5 +1,5 @@
 import {VERSION,LABELS,FLAG_LABELS,columnLabel,rowLabel,validateTemplate,calibration,transform,regions,mapPoint,correctCell,csv,tableRows,evidenceRows} from './core.mjs';
-import {canvas,warp,crop,prepareCrop,removeBlue} from './imaging.mjs';
+import {canvas,warp,crop,prepareCrop,removeBlue,imageEvidence} from './imaging.mjs';
 import {sqliteBytes} from './storage.mjs';
 import {POINT_PADDING,imageLayout,imagePosition,nearestPoint,movePoint,pointNames,pointOutline} from './point-tools.mjs';
 import {detectTableQuad,detectionImage} from './table-detector.mjs';
@@ -164,7 +164,7 @@ function syncGridControls(){
   const signature=JSON.stringify(template.columns.map(c=>[c.name,c.label])),select=$('selected-column');
   if(select.dataset.columns!==signature){select.replaceChildren(...template.columns.map((c,i)=>{const option=el('option',`列${i+1} · ${columnLabel(c)}`);option.value=i;return option;}));select.dataset.columns=signature;}
   select.value=state.column;const c=template.columns[state.column];
-  for(const [id,value]of [['column-x1',c.x[0]/template.size[0]*100],['column-x2',c.x[1]/template.size[0]*100],['column-angle',c.rotation_degrees??0]])if(document.activeElement!==$(id))$(id).value=+value.toFixed(2);
+  for(const [id,value]of [['column-x1',(c.x1??c.x[0]/template.size[0])*100],['column-x2',(c.x2??c.x[1]/template.size[0])*100],['column-angle',c.rotation_degrees??0]])if(document.activeElement!==$(id))$(id).value=+value.toFixed(2);
   const rowSelect=$('selected-row'),rowSignature=JSON.stringify([rows,template.row_labels,template.header_rows]);
   if(rowSelect.dataset.rows!==rowSignature){rowSelect.replaceChildren(...Array.from({length:rows},(_,i)=>{const option=el('option',`${i+1} · ${rowLabel(template,i)}`);option.value=i;return option;}));rowSelect.dataset.rows=rowSignature;}rowSelect.value=state.row;
   for(const [id,value,placeholder]of [['column-label',c.label??'',columnLabel(c)],['row-label',template.row_labels?.[state.row]??'',rowLabel(template,state.row)]]){if(document.activeElement!==$(id))$(id).value=value;$(id).placeholder=placeholder;}
@@ -274,7 +274,7 @@ function getAtlas(){
 }
 function renderAtlas(){
   const atlas=getAtlas();if(!atlas)return;const out=$('atlas-canvas');if(out.dataset.atlasSerial!==String(atlas.serial)){out.width=atlas.image.width;out.height=atlas.image.height;out.getContext('2d').drawImage(atlas.image,0,0);out.dataset.revision=String((Number(out.dataset.revision)||0)+1);out.dataset.cellCount=String(atlas.layout.slots.length);out.dataset.atlasSerial=String(atlas.serial);out.dataset.source=ATLAS_REVISION;}
-  $('atlas-caption').textContent=`${atlas.layout.slots.length}セル · ${out.width}×${out.height}px · 結合プレビュー（認識はセル単位）`;return out;
+  $('atlas-caption').textContent=`${atlas.layout.slots.length}セル · ${out.width}×${out.height}px · この画像全体を1回でOCR`;return out;
 }
 function renderResults(){
   if(state.stage!==3)return;const table=el('table','','ocr-result-table'),head=el('tr');head.append(el('th','行'));template.columns.forEach(c=>head.append(el('th',columnLabel(c))));const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');
@@ -326,7 +326,8 @@ function saveCell(next=false){
   correctCell(c,$('corrected-value').value,$('correction-reason').value,$('reviewed').checked);state.dirty=true;$('correction-reason').value='';reviewBaseline=null;
   const index=state.cells.indexOf(c),target=next?state.cells.slice(index+1).find(x=>!$('only-flagged').checked||x.flags.length):null;selectCell(target?.id??c.id);message('');
 }
-function stopWorker(){state.worker?.terminate();state.worker=null;state.ready=false;}
+const ocrRefresh=debounceTask(()=>{renderTable();if(state.selected)selectCell(state.selected);},30);
+function stopWorker(){ocrRefresh.cancel();state.worker?.terminate();state.worker=null;state.ready=false;}
 async function initWorker({quiet=false}={}){
   if(state.ready)return;if(pendingInit)return pendingInit;
   stopWorker();const worker=new Worker('./ocr-worker.mjs',{type:'module'});state.worker=worker;
@@ -337,9 +338,9 @@ async function initWorker({quiet=false}={}){
       if(data.type==='error'){state.running=false;state.ocrPrevious=null;message(data.message,true);setBusy(false);}
       if(data.type==='cell'){
         const index=state.cells.findIndex(c=>c.id===data.cell.id);if(index>=0)state.cells[index]=mergeOCR(state.ocrPrevious?.get(data.cell.id)??state.cells[index],data.cell);
-        state.dirty=true;$('progress').max=data.total;$('progress').value=data.done;renderTable();if(state.selected===data.cell.id)selectCell(state.selected);
+        state.dirty=true;$('progress').max=data.total;$('progress').value=data.done;ocrRefresh.schedule();
       }
-      if(data.type==='complete'){state.running=false;state.ocrPrevious=null;if(data.stats){$('run').dataset.lastStats=JSON.stringify(data.stats);$('run').title=`前回: ${(data.stats.totalMs/1000).toFixed(1)}秒・${data.stats.inferences}回推論${data.stats.combined?'（結合）':''}`;}setBusy(false);renderTable();if(state.selected)selectCell(state.selected);message('');}
+      if(data.type==='complete'){ocrRefresh.cancel();state.running=false;state.ocrPrevious=null;if(data.stats){$('run').dataset.lastStats=JSON.stringify(data.stats);$('run').title=`前回: ${(data.stats.totalMs/1000).toFixed(1)}秒・${data.stats.ocrCalls??1}回OCR・${data.stats.inferences}回モデル計算・${data.stats.threads??1}スレッド`;}setBusy(false);renderTable();if(state.selected)selectCell(state.selected);message('');}
     }
   }).then(()=>{state.ready=true;state.engineSaved=true;sync();}).finally(()=>{pendingInit=null;});return pendingInit;
 }
@@ -378,8 +379,14 @@ async function runOCR(selection={type:'all'}){
   if(selection.type==='cell')await selectCell(selection.id);
   state.running=true;setBusy(true);$('progress').max=rs.length;$('progress').value=0;message('');renderTable();
   try{
-    const bitmap=await createImageBitmap(state.normalized),sourceBitmap=await createImageBitmap(state.source);
-    state.worker.postMessage({type:'recognize',bitmap,sourceBitmap,regions:rs,mode:selection.type,compareBlue:$('compare-blue').checked,threshold:template.confidence_threshold,blueHue:template.blue_hue??[75,125],blueSaturation:template.blue_saturation??45},[bitmap,sourceBitmap]);
+    const job={type:'recognize',regions:rs,mode:selection.type,compareBlue:$('compare-blue').checked,threshold:template.confidence_threshold,blueHue:template.blue_hue??[75,125],blueSaturation:template.blue_saturation??45};
+    if(selection.type==='all'){
+      state.inputView='atlas';sync();const shown=renderAtlas(),atlas=getAtlas(),evidence=await imageEvidence(shown);
+      $('run').dataset.inputSha256=evidence.sha256;job.atlasBitmap=await createImageBitmap(shown);job.layout=atlas.layout;
+      state.worker.postMessage(job,[job.atlasBitmap]);
+    }else{
+      job.bitmap=await createImageBitmap(rs[0].source==='original_image'?state.source:state.normalized);state.worker.postMessage(job,[job.bitmap]);
+    }
   }catch(error){state.running=false;setBusy(false);state.ocrPrevious=null;throw error;}
 }
 function download(data,name,type){const blob=data instanceof Blob?data:new Blob([data],{type}),url=URL.createObjectURL(blob),link=el('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
@@ -488,7 +495,7 @@ $('prepare-engine').addEventListener('click',guard(installEngine));$('run').addE
 $('only-flagged').addEventListener('change',renderTable);$('save-cell').addEventListener('click',guard(()=>saveCell()));$('save-next').addEventListener('click',guard(()=>saveCell(true)));
 $('export-table').addEventListener('click',()=>{download(csv(tableRows(state.cells,template)),'timecard.csv','text/csv;charset=utf-8');warnExport();});$('export-evidence').addEventListener('click',()=>{download(csv(evidenceRows(state.cells)),'timecard-evidence.csv','text/csv;charset=utf-8');warnExport();});
 $('export-sqlite').addEventListener('click',guard(async()=>{download(await sqliteBytes(state.cells,metadata()),'timecard.sqlite','application/vnd.sqlite3');warnExport();}));$('save-project').addEventListener('click',guard(saveProject));$('project-file').addEventListener('change',guard(e=>restoreProject(e.target.files[0])));
-$('clear-engine').addEventListener('click',guard(async()=>{if(!await confirmPage('このブラウザーに保存した認識エンジンを削除します。再びOCRを使うには約98MBの再取得が必要です。'))return;stopWorker();await caches.delete(CACHE);state.engineSaved=false;state.engineChecked=true;sync();message('');}));
+$('clear-engine').addEventListener('click',guard(async()=>{if(!await confirmPage('このブラウザーに保存した認識エンジンを削除します。再びOCRを使うには認識データの再取得が必要です。'))return;stopWorker();await caches.delete(CACHE);state.engineSaved=false;state.engineChecked=true;sync();message('');}));
 window.addEventListener('beforeunload',event=>{if(state.dirty||unsavedCell()){event.preventDefault();event.returnValue='';}});
 renderTemplate();pointHint();sync();
 new ResizeObserver(()=>{if(state.source)draw();}).observe($('image-canvas'));

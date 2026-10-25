@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import tarfile
+import runpy
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ def sha(data):
 
 
 def verify(download=False):
+    whole = runpy.run_path(str(ROOT / 'scripts/prepare-timecard-whole.py'))
     lock = json.loads(LOCK.read_text(encoding='utf-8'))
     for group in lock['sources']:
         missing = any(not (APP / f['path']).is_file() for f in group['files'])
@@ -29,13 +31,20 @@ def verify(download=False):
                     for entry in group['files']:
                         target = APP / entry['path']
                         target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(archive.extractfile(entry['member']).read())
+                        payload = archive.extractfile(entry['member']).read()
+                        if entry.get('recipe') == 'paddleocr-worker-adapter-v3':
+                            payload = whole['sdk_adapter'](payload)
+                        target.write_bytes(payload)
             else:
                 target = APP / group['files'][0]['path']
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
         for entry in group['files']:
             assert sha((APP / entry['path']).read_bytes()) == entry['sha256'], '依存ファイル不一致: ' + entry['path']
+    if download:
+        whole['prepare']()
+    for entry in lock.get('generated', []):
+        assert sha((APP / entry['path']).read_bytes()) == entry['sha256'], '生成モデル不一致: ' + entry['path']
     manifest = json.loads((APP / 'assets.json').read_text(encoding='utf-8'))
     for entry in manifest['files']:
         data = (APP / entry['path']).read_bytes()

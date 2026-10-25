@@ -1,10 +1,11 @@
 {
-  "name": "Sample timecard 16 rows; manually configured layout",
+  "name": "アマノタイムカード",
   "size": [
     1360,
     1680
   ],
   "row_edges": [
+    0,
     160,
     255,
     350,
@@ -34,16 +35,21 @@
         108
       ],
       "kind": "day",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.007352941176470588,
+      "x2": 0.07941176470588235
     },
     {
       "name": "arrival_stamp",
       "x": [
-        121,
+        128,
         174
       ],
       "kind": "text",
-      "direction": "rotate_cw"
+      "direction": "rotate_cw",
+      "x1": 0.094,
+      "x2": 0.12794117647058822,
+      "label": "出勤日"
     },
     {
       "name": "arrival",
@@ -52,7 +58,9 @@
         301
       ],
       "kind": "time",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.13161764705882353,
+      "x2": 0.2213235294117647
     },
     {
       "name": "interim_out",
@@ -61,7 +69,9 @@
         495
       ],
       "kind": "time",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.23161764705882354,
+      "x2": 0.3639705882352941
     },
     {
       "name": "interim_in",
@@ -70,7 +80,9 @@
         686
       ],
       "kind": "time",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.37279411764705883,
+      "x2": 0.5044117647058823
     },
     {
       "name": "departure_stamp",
@@ -79,7 +91,10 @@
         734
       ],
       "kind": "text",
-      "direction": "rotate_cw"
+      "direction": "rotate_cw",
+      "x1": 0.5117647058823529,
+      "x2": 0.5397058823529411,
+      "label": "退勤日"
     },
     {
       "name": "departure",
@@ -88,7 +103,9 @@
         875
       ],
       "kind": "time",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.5411764705882353,
+      "x2": 0.6433823529411765
     },
     {
       "name": "overtime",
@@ -97,7 +114,9 @@
         1193
       ],
       "kind": "duration",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.6522058823529412,
+      "x2": 0.8772058823529412
     },
     {
       "name": "subtotal",
@@ -106,46 +125,12 @@
         1359
       ],
       "kind": "duration",
-      "direction": "horizontal"
+      "direction": "horizontal",
+      "x1": 0.8838235294117647,
+      "x2": 0.9992647058823529
     }
   ],
   "extra_regions": [
-    {
-      "id": "date_header",
-      "column_name": "date_header",
-      "kind": "text",
-      "direction": "vertical_stack:2",
-      "bbox": [
-        20,
-        10,
-        100,
-        145
-      ]
-    },
-    {
-      "id": "regular_in_header",
-      "column_name": "regular_in_header",
-      "kind": "text",
-      "direction": "vertical_stack:2",
-      "bbox": [
-        140,
-        12,
-        297,
-        148
-      ]
-    },
-    {
-      "id": "regular_out_header",
-      "column_name": "regular_out_header",
-      "kind": "text",
-      "direction": "vertical_stack:2",
-      "bbox": [
-        700,
-        12,
-        860,
-        148
-      ]
-    },
     {
       "id": "title",
       "column_name": "title",
@@ -172,5 +157,10 @@
       ],
       "source": "original_image"
     }
-  ]
+  ],
+  "layout_version": 2,
+  "header_rows": [
+    0
+  ],
+  "header_columns": []
 }

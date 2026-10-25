@@ -20,17 +20,21 @@ python -m http.server 9097 --bind 127.0.0.1 --directory www
 1. 画像を選ぶか、元画像欄へドロップします。
 2. ①表の指定で四隅を合わせ、「補正を実行」で確定します。
 3. ②行列の指定で行列・見出し・本文の回転を調整し、「調整完了」で③へ進みます。列見出しは回転しません。
-4. ③OCRで一括実行、またはセルを選んで「選択セルを再OCR」を実行します。一括もセルごとに同じPP-OCRv5で処理するため、所要時間はセル数に応じて増えます。
+4. ③OCRで一括実行、またはセルを選んで「選択セルを再OCR」を実行します。一括は100×100px以上の余白を含む原色の結合画像全体を1回でOCRし、文字の位置から各セルへ戻します。対応ブラウザーでは最大4スレッドで計算します。
 5. 原画像と結果を照合し、必要な値を修正して保存・書出しします。
 
-結合画像は切出し位置の確認用プレビューです。結合画像全体を別のエンジンで読む処理は使いません。原色・青除去の比較ON時は、各セルを2回認識します。
+アマノタイムカードの列2はX1=9.4%、日付の列名は出勤日・退勤日です。
+
+並列計算にはブラウザーの分離環境を使います。同梱のService Workerが次回の文書読込から必要なヘッダーを付加します。Apacheでは同梱の.htaccessも設定します。分離環境が利用できない場合は1スレッドで動作します。
+
+表示した結合画像そのものをOCR入力へ渡します。画像全体の文字検出1回と、検出した全ての文字行の認識1回で構成するPP-OCRv5の全体パイプラインです。セル別のOCRや失敗時の小分け処理へは切り替えません。原色・青除去の比較ON時だけ画像全体を各1回、計2回処理します。端末のメモリ上限を超えた場合はエラーを表示します。
 
 ## テスト
 
 依存ファイルを取得後、次を実行します。
 
 ```powershell
-node --test scripts/test-timecard-browser.mjs scripts/test-timecard-points.mjs scripts/test-timecard-workflow.mjs scripts/test-timecard-ocr-prep.mjs scripts/test-timecard-engine.mjs scripts/test-timecard-drop.mjs scripts/test-timecard-page.mjs scripts/test-timecard-ui.mjs
+node --test scripts/test-timecard-browser.mjs scripts/test-timecard-points.mjs scripts/test-timecard-workflow.mjs scripts/test-timecard-ocr-prep.mjs scripts/test-timecard-engine.mjs scripts/test-timecard-drop.mjs scripts/test-timecard-page.mjs scripts/test-timecard-ui.mjs scripts/test-timecard-whole.mjs
 ```
 
 自動テストと合成画像で検証しています。実カード・手書き・かすれの正確な認識は保証せず、必ず原画像と照合してください。

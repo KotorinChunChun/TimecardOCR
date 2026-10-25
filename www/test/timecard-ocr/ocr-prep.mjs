@@ -33,8 +33,9 @@ export function planAtlas(items,{gap=16,maxWidth=2048,maxHeight=4096,maxItems=32
   }
   flush();return pages;
 }
-export function batchInputs(inputs){
+export function batchInputs(inputs,{exact=false}={}){
   if(!inputs.length||inputs.some(v=>v.dims[0]!==1||v.dims[1]!==3||v.dims[2]!==48||v.data.length!==3*48*v.dims[3]))throw Error('OCR入力の形式が不正です。');
+  if(exact&&inputs.some(v=>v.dims[3]!==inputs[0].dims[3]))throw Error('同じ入力幅のセルだけをバッチにできます。');
   const width=Math.max(...inputs.map(v=>v.dims[3])),data=new Float32Array(inputs.length*3*48*width);
   inputs.forEach((input,n)=>{const w=input.dims[3];for(let k=0;k<3;k++)for(let y=0;y<48;y++)data.set(input.data.subarray((k*48+y)*w,(k*48+y+1)*w),((n*3+k)*48+y)*width);});
   return {data,dims:[inputs.length,3,48,width]};
@@ -43,4 +44,10 @@ export function recognitionSize(width,height,compact=false){
   const contentWidth=Math.max(1,Math.ceil(48*width/height)),inputWidth=compact?Math.max(160,Math.ceil(contentWidth/8)*8):Math.max(320,contentWidth);
   if(inputWidth>2048)throw Error('横に長すぎる領域です。テンプレートで領域を分割してください。');
   return {height:48,width:inputWidth,contentWidth};
+}
+
+export function inferenceThreads(isolated,cores=2,requested=0){
+  if(!isolated)return 1;
+  const limit=Math.max(1,Math.min(8,Math.floor(cores)||2));
+  return Math.max(1,Math.min(limit,requested>0?Math.floor(requested):Math.min(4,Math.ceil(limit/2))));
 }

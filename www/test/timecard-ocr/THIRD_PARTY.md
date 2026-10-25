@@ -23,6 +23,15 @@
 
 ## 一括・個別OCR
 
-一括・選択セルともPP-OCRv5を使用します。切出し、見出しの回転除外、本文の指定回転、外れ色を除いた輪郭色の余白、48px高のBGR正規化、CTC復号を共通化しています。一括は選んだ全セルを順番に処理し、選択セルの再OCRはそのセルだけを処理します。原色・青除去の比較ON時は各セルを2回認識します。
+一括・選択セルともPP-OCRv5 server文字認識モデルの同じ重みを使います。一括は原色の結合画像全体を公式PaddleOCR.js 0.4.2のパイプラインへ1回渡します。PP-OCRv5 server検出を全体へ1回、検出した文字行すべてをserver認識へ1バッチで渡します。セル別再認識・失敗時の分割は行いません。原色・青除去の比較ON時だけ各画像を1回ずつ処理します。個別再OCRは選択セルを同じserver文字認識モデルへ渡します。
 
-結合画像は行列・切出し範囲を確認するプレビューです。結合画像全体を別のOCRエンジンへ渡す機能は廃止しました。精度を個別OCRと揃えるため、従来のページOCRより処理時間が長くなる場合があります。
+切出しの原色、見出しの回転除外、本文の指定回転、外れ色を除いた輪郭色の100×100px以上の余白と、近傍の最多輪郭色による結合背景を維持します。内部の文字検出用リサイズ・正規化と文字認識用のBGR正規化は公式SDKの標準処理です。表示画像を白黒画像へ差し替えません。
+
+追加依存:
+
+- PaddleOCR.js 0.4.2（Apache-2.0）: https://github.com/PaddlePaddle/PaddleOCR/tree/main/paddleocr-js
+- PP-OCRv5 server検出の公式ONNX配布: https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_server_det_onnx_infer.tar
+- OpenCV.js（Apache-2.0）: [本文](licenses/opencv-js.txt)
+- js-yaml（MIT）、Clipper（Boost-1.0）、JSBN（Tom Wuのライセンス）: [本文・著作者](licenses/paddleocr-js-third-party.txt)
+
+SDK配布のワーカーにアプリ用exportを追加し、自動メッセージハンドラーを除去、ORT読込を同じ固定版のWASM専用モジュールへ変更しています。OpenCVの4つの動的関数生成を同等のクロージャへ置換し、既存のCSPでunsafe-evalを許可せず動作させます。検出・認識アルゴリズムは変更していません。検出用の内部リサイズ上限は1536pxで、文字認識は原色の結合画像から元の解像度で切り出した文字行を使います。認識tarは既存のONNX重みと既存辞書を決定的に再梱包したもので、重みは変更していません。準備スクリプト・固定台帳に元配布と変換後のSHA-256を記録しています。

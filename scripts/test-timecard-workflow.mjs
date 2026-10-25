@@ -99,3 +99,8 @@ test('見本タイムカードのテンプレートは打刻種別も含めて�
   assert.deepEqual(t.columns.map(c=>c.name),['day','arrival_stamp','arrival','interim_out','interim_in','departure_stamp','departure','overtime','subtotal']);
   for(let i=1;i<t.columns.length;i++)assert.ok(t.columns[i-1].x[0]<=t.columns[i].x[0]);
 });
+test('アマノ用紙の列2はX1=9.4%をJSONと表示用比率で保持し、日と時刻の列を区別する',()=>{
+  const t=gridTemplate(JSON.parse(readFileSync(new URL('../www/test/timecard-ocr/template-original.json',import.meta.url))));assert.equal(t.name,'アマノタイムカード');assert.equal(t.columns[1].x1,.094);assert.equal(t.columns[1].x[0],128);assert.equal(columnLabel(t.columns[1]),'出勤日');assert.equal(columnLabel(t.columns.find(c=>c.name==='departure_stamp')),'退勤日');assert.equal(columnLabel(t.columns.find(c=>c.name==='departure')),'退勤');
+  const updated=setColumnRange(t,1,0,.094);assert.equal(updated.columns[1].x1,.094);assert.equal(parseDefinition(JSON.stringify(updated)).columns[1].x1,.094);
+  const old=structuredClone(t);old.columns[1].label='出勤印';old.columns.find(c=>c.name==='departure_stamp').label='退勤印';const migrated=validateTemplate(old);assert.equal(migrated.columns[1].name,'arrival_stamp');assert.equal(migrated.columns[1].label,'出勤日');assert.equal(migrated.columns.find(c=>c.name==='departure_stamp').label,'退勤日');
+});

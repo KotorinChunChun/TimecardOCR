@@ -11,21 +11,22 @@ APP = 'www/test/timecard-ocr/'
 APP_NAMES = (
     '.htaccess', 'THIRD_PARTY.md', 'index.html', 'style.css', 'sw.js',
     'bootstrap.mjs', 'update.html', 'update.mjs', 'core.mjs', 'imaging.mjs',
-    'ocr-prep.mjs', 'engine-client.mjs', 'image-drop.mjs', 'ui-tools.mjs',
+    'ocr-prep.mjs',  'whole-engine.mjs', 'whole-result.mjs', 'engine-client.mjs', 'image-drop.mjs', 'ui-tools.mjs',
     'point-tools.mjs', 'table-detector.mjs', 'workflow.mjs', 'grid-editor.mjs',
     'page-layout.mjs', 'atlas.mjs', 'storage.mjs', 'ocr-worker.mjs', 'app.mjs',
     'assets.json', 'template-original.json', 'models/characters.json',
-    'licenses/paddleocr.txt', 'licenses/rapidocr.txt', 'licenses/onnxruntime.txt',
+    'licenses/paddleocr.txt', 'licenses/opencv-js.txt', 'licenses/paddleocr-js-third-party.txt', 'licenses/rapidocr.txt', 'licenses/onnxruntime.txt',
     'licenses/onnxruntime-third-party.txt')
-TESTS = ('browser', 'points', 'workflow', 'ocr-prep', 'engine', 'drop', 'page', 'ui')
+TESTS = ('browser', 'points', 'workflow', 'ocr-prep', 'engine', 'drop', 'page', 'ui', 'whole')
 FILES = tuple(APP + name for name in APP_NAMES) + tuple(
     'scripts/test-timecard-' + name + '.mjs' for name in TESTS) + (
-    'scripts/prepare-timecard-browser.py', 'scripts/export-timecard-github.py',
+    'scripts/prepare-timecard-browser.py', 'scripts/prepare-timecard-whole.py', 'scripts/export-timecard-github.py',
     'dev/history/v1.1.0/timecard-assets-lock.json',
     'tools/timecard-ocr/templates/sample_timecard.json',
     'docs/timecard-ocr-repository.md')
 IGNORE = '''/www/test/timecard-ocr/vendor/
 /www/test/timecard-ocr/models/*.onnx
+/www/test/timecard-ocr/models/*.tar
 /dev/history/*/logs/
 /private/
 __pycache__/
@@ -57,7 +58,7 @@ def verify(target):
     for entry in manifest['files']:
         relative = entry['path']
         assert not any(part in {'private', 'logs', 'validation'} for part in Path(relative).parts)
-        assert not Path(relative).suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.csv', '.db', '.sqlite', '.onnx'}
+        assert not Path(relative).suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.csv', '.db', '.sqlite', '.onnx', '.tar'}
         path = target / relative
         assert path.is_file() and digest(path) == entry['sha256'], relative
     print(f"固定ソース {len(expected)}件のSHA-256、実画像・結果・ログの除外: 合格")

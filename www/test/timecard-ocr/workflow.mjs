@@ -111,7 +111,7 @@ export function setColumnRange(input,index,side,ratio){
   const t=gridTemplate(input),c=t.columns[index],w=t.size[0];
   if(!c||![0,1].includes(side)||!Number.isFinite(ratio))throw Error('変更する列とX1・X2を選んでください。');
   c.x[side]=bounded(Math.round(ratio*w),side?c.x[0]+1:0,side?w:c.x[1]-1);
-  c.x1=c.x[0]/w;c.x2=c.x[1]/w;return finish(t);
+  c.x1??=c.x[0]/w;c.x2??=c.x[1]/w;c[side?'x2':'x1']=bounded(ratio,side?(c.x[0]+1)/w:0,side?1:(c.x[1]-1)/w);return finish(t);
 }
 export function setRowBoundary(input,index,pixel){
   const t=gridTemplate(input),edges=t.row_edges;

@@ -8,12 +8,6 @@
       "mime": "application/json"
     },
     {
-      "path": "models/ppocrv5-rec.onnx",
-      "bytes": 84577022,
-      "sha256": "e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a",
-      "mime": "application/octet-stream"
-    },
-    {
       "path": "vendor/onnxruntime/ort-wasm-simd-threaded.mjs",
       "bytes": 24274,
       "sha256": "5687566b1bc1c8cf628d76c2ddb16b2a3b81a7997273d4666564880495088e57",
@@ -42,6 +36,24 @@
       "bytes": 659806,
       "sha256": "0734155c83e493983d1f2ff5b09a4fab6e35a32e9449c7e4e545756439f62d73",
       "mime": "application/wasm"
+    },
+    {
+      "path": "vendor/paddleocr/whole-pipeline.mjs",
+      "bytes": 11338390,
+      "sha256": "6af8325fea24a757f48996d75b483c2503873527007a58e36e4a3d62eca40b88",
+      "mime": "text/javascript"
+    },
+    {
+      "path": "models/ppocrv5-det.tar",
+      "bytes": 88135680,
+      "sha256": "cd28389ed2c11dfe02d6a9847ec95ca6153a51bf38bc1c4e2521c1f548188f58",
+      "mime": "application/octet-stream"
+    },
+    {
+      "path": "models/ppocrv5-rec.tar",
+      "bytes": 84715520,
+      "sha256": "e6e26853e1fff8804e566cbe8610d0fb1e973b4de13e43be068d5f3473b2908b",
+      "mime": "application/octet-stream"
     }
   ]
 }

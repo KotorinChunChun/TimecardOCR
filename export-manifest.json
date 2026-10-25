@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "0e80ef1de6eef626749e012f8230d6bb43a8303c",
+  "sourceRevision": "c3f33db54ed66b07cf119fbf9d969b1b0b2442f5",
   "files": [
     {
       "path": ".gitattributes",
@@ -8,33 +8,38 @@
     },
     {
       "path": ".gitignore",
-      "bytes": 234,
-      "sha256": "07a1fae26b6ba355b2ac603b3225b42b31610e50ada77593883a101337e8cd77"
+      "bytes": 271,
+      "sha256": "f2e9c77c1f96dda2ef6045d5e8164dcb9f5f6fa730029b6393538916aa115dd5"
     },
     {
       "path": "README.md",
-      "bytes": 3156,
-      "sha256": "b9d9c3e9d006cda215c016a4d85847a093c8682eb1227691ba722b2c1dd2f4ba"
+      "bytes": 3900,
+      "sha256": "db23c08198d0a6e64a8cec032e25a20507454c013c1c20fc3bca4b650a098535"
     },
     {
       "path": "dev/history/v1.1.0/timecard-assets-lock.json",
-      "bytes": 3848,
-      "sha256": "b7423dfc8577feac33c4e9ec87e40169fc3b933f3e043af20248299ea87c6d25"
+      "bytes": 5033,
+      "sha256": "f54c08dc87377cce604bdd29c445c479fc6dfb9133edddce8d058b0fe86a8f45"
     },
     {
       "path": "docs/timecard-ocr-repository.md",
-      "bytes": 3117,
-      "sha256": "bc069392fbcba74e11cb19e168bc2e94db8847160892672b78a8ee2362ac0ea9"
+      "bytes": 3903,
+      "sha256": "4c26636eb84e70f9ebe0a5794481427d1056e072e64c5f6dbd718582dd99512c"
     },
     {
       "path": "scripts/export-timecard-github.py",
-      "bytes": 4123,
-      "sha256": "91260b00f09df5266b2aa82fde65449590346e0e62543d94c576edccd6db9595"
+      "bytes": 4413,
+      "sha256": "7b359d1900f46074ac6ad841e518ec41c379871c17e948594c9f78b9a5418341"
     },
     {
       "path": "scripts/prepare-timecard-browser.py",
-      "bytes": 2176,
-      "sha256": "ff67394384d535dcd6968afbd1730c952f3fee553f7fc12cf5656198c4af3139"
+      "bytes": 2664,
+      "sha256": "e4a9273ed5d8f2222e888f027a9cfed545deb56a80112862d7cd8e8d054448d7"
+    },
+    {
+      "path": "scripts/prepare-timecard-whole.py",
+      "bytes": 6267,
+      "sha256": "0f51dcdbf47dcb3085506a73b26a65f38ef11f43ac287d91ddb3a333f25642cf"
     },
     {
       "path": "scripts/test-timecard-browser.mjs",
@@ -48,8 +53,8 @@
     },
     {
       "path": "scripts/test-timecard-engine.mjs",
-      "bytes": 4064,
-      "sha256": "3e33a772496085f5abdcfd4f08f76181cf5953510fd3a05eba2d0f4291c711ac"
+      "bytes": 4162,
+      "sha256": "c96e2f71499604834b65f2de80b2893a9105c9f03744dea3b0a6b825771b053c"
     },
     {
       "path": "scripts/test-timecard-ocr-prep.mjs",
@@ -72,9 +77,14 @@
       "sha256": "a8d0857b66c51500e0e8a542bba6d56483bed49ea501bee764b67070db41f67b"
     },
     {
+      "path": "scripts/test-timecard-whole.mjs",
+      "bytes": 6490,
+      "sha256": "b3fb3360875333966e75496ffb2ec8659b8f05d4ff4bb40a835caea193aa86a6"
+    },
+    {
       "path": "scripts/test-timecard-workflow.mjs",
-      "bytes": 13736,
-      "sha256": "43174b3d0e0c8b18751c1e4ba5dda1c93e9ac587919b02b0c132ae1b71071c76"
+      "bytes": 14844,
+      "sha256": "6a5c9e2ba39983933d69c8cecf031dc6255a31861eb0115348f110bee757fa1c"
     },
     {
       "path": "tools/timecard-ocr/templates/sample_timecard.json",
@@ -83,23 +93,23 @@
     },
     {
       "path": "www/test/timecard-ocr/.htaccess",
-      "bytes": 665,
-      "sha256": "009bb17a019518f492fcf0a23205a4d40abbef706944addd54ec4bb4a2dd81ac"
+      "bytes": 805,
+      "sha256": "beab07a52601e0386f496c300e03d6aad3e63c22c56438853394d2bf41ac6341"
     },
     {
       "path": "www/test/timecard-ocr/THIRD_PARTY.md",
-      "bytes": 2715,
-      "sha256": "a9d1125957e524cdd33463da6a9ee1648969017c91ddcb74cedd3aa5514c2e9e"
+      "bytes": 4207,
+      "sha256": "fba382f759b0d3e5ec0b488b1627a27fc957f4917b0dbd6d051520314d32757b"
     },
     {
       "path": "www/test/timecard-ocr/app.mjs",
-      "bytes": 63155,
-      "sha256": "25133b0a5904a94921e5305d7d72aa5e4645c07eebb9a5a4da0b4f0ef66d144e"
+      "bytes": 63637,
+      "sha256": "ca08d22316405d7df17fe79b2db9e93fdbc8a71eefa0eb7a525ffb47f82c506e"
     },
     {
       "path": "www/test/timecard-ocr/assets.json",
-      "bytes": 1513,
-      "sha256": "455fed6481403fcc2423765256c8a2a247334e7d44e8ea0431de9cda08f523f8"
+      "bytes": 1934,
+      "sha256": "59ee5c9a9724d145bb2ccc4ac758e73a6848e85af341369c0d84574c06430025"
     },
     {
       "path": "www/test/timecard-ocr/atlas.mjs",
@@ -113,8 +123,8 @@
     },
     {
       "path": "www/test/timecard-ocr/core.mjs",
-      "bytes": 11952,
-      "sha256": "896bab0407003c6fb600a396801dedb59c2738e3905b5bdc843d422653cab977"
+      "bytes": 12048,
+      "sha256": "a8f1d92f6fb2f2e52e6ca21b377996f9e36ddad3e3adde15acb5a64bd00df092"
     },
     {
       "path": "www/test/timecard-ocr/engine-client.mjs",
@@ -138,8 +148,8 @@
     },
     {
       "path": "www/test/timecard-ocr/index.html",
-      "bytes": 14954,
-      "sha256": "d99ff3b25367eabcc6638eadc616f9b3e54dd29d878d16d9f359acf300fd7ac4"
+      "bytes": 15073,
+      "sha256": "ebe230ad1ff726bf29618656631330da0e85d12fe5a4aedd2fd347df13504b3c"
     },
     {
       "path": "www/test/timecard-ocr/licenses/onnxruntime-third-party.txt",
@@ -150,6 +160,16 @@
       "path": "www/test/timecard-ocr/licenses/onnxruntime.txt",
       "bytes": 1073,
       "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "path": "www/test/timecard-ocr/licenses/opencv-js.txt",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "www/test/timecard-ocr/licenses/paddleocr-js-third-party.txt",
+      "bytes": 4600,
+      "sha256": "a48b5029aec4bd18c86dad10e134e60eb24241bd5b877aa7e9b5ca3021c78ea5"
     },
     {
       "path": "www/test/timecard-ocr/licenses/paddleocr.txt",
@@ -168,13 +188,13 @@
     },
     {
       "path": "www/test/timecard-ocr/ocr-prep.mjs",
-      "bytes": 3993,
-      "sha256": "523c6eccb69961d4c8a25047f481ee5a8a86e4bb4d456ee03b7b41eb4be60353"
+      "bytes": 4453,
+      "sha256": "79960aeb19e63c09affb836295d37e772cac9ad59fe3a5f13f6a301bb0079b61"
     },
     {
       "path": "www/test/timecard-ocr/ocr-worker.mjs",
-      "bytes": 3501,
-      "sha256": "2bad9ba260831e4bdc46e5fa7dab4744375d9609c55b7993c885019eb634350f"
+      "bytes": 2797,
+      "sha256": "a8907e53199a3e37de4ed009e2e0a11a7c5974610bcfb7a9af318524a3e4ab8c"
     },
     {
       "path": "www/test/timecard-ocr/page-layout.mjs",
@@ -198,8 +218,8 @@
     },
     {
       "path": "www/test/timecard-ocr/sw.js",
-      "bytes": 1549,
-      "sha256": "d61bfd0063b607d7f65cb7618a60b5f45f5cf1348019bf1b2efe2b59188e9611"
+      "bytes": 3193,
+      "sha256": "160d632a08ec10d01bbae5c998660501c24c33411c9d5e7ceb742416550d0fe6"
     },
     {
       "path": "www/test/timecard-ocr/table-detector.mjs",
@@ -208,8 +228,8 @@
     },
     {
       "path": "www/test/timecard-ocr/template-original.json",
-      "bytes": 2989,
-      "sha256": "3066cca7d76defeef9face63a3f31464ef807a11d7fa440f15ff060f5c86d65b"
+      "bytes": 3007,
+      "sha256": "7ca6c05e3860287405f746f5427e1419b3c7fc2dbdbf624b289ab17e60e261cd"
     },
     {
       "path": "www/test/timecard-ocr/ui-tools.mjs",
@@ -227,9 +247,19 @@
       "sha256": "560ae6af475076cc84772b95d35f6eed5ad9e6176ec68ef412bb440af947e8df"
     },
     {
+      "path": "www/test/timecard-ocr/whole-engine.mjs",
+      "bytes": 3441,
+      "sha256": "efaa77c2c11f7d4f40ab32de66a3db2e82dc2ebaa959ba3f848101b18edd1c38"
+    },
+    {
+      "path": "www/test/timecard-ocr/whole-result.mjs",
+      "bytes": 2942,
+      "sha256": "3f5c6b7edce614f524b0bdd7c22728fd90dd9d0456167dfdc7d025e7d33ce75a"
+    },
+    {
       "path": "www/test/timecard-ocr/workflow.mjs",
-      "bytes": 13993,
-      "sha256": "bb5d6e12310823d715257fe437807c04566d1f5f057b2002ecf3a0773060f4ae"
+      "bytes": 14070,
+      "sha256": "82391ba31be85a479ea5ff0a4deff459c26bfffa7c0258e85763c19b0067f700"
     }
   ]
 }

@@ -1,5 +1,6 @@
 /www/test/timecard-ocr/vendor/
 /www/test/timecard-ocr/models/*.onnx
+/www/test/timecard-ocr/models/*.tar
 /dev/history/*/logs/
 /private/
 __pycache__/

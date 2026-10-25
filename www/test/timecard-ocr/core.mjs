@@ -1,5 +1,5 @@
 export const VERSION = '1.1.0';
-export const LABELS = {day:'日',arrival:'出勤',interim_out:'外出',interim_in:'戻り',departure:'退勤',overtime:'残業',subtotal:'小計',arrival_stamp:'出勤印',departure_stamp:'退勤印'};
+export const LABELS = {day:'日',arrival:'出勤',interim_out:'外出',interim_in:'戻り',departure:'退勤',overtime:'残業',subtotal:'小計',arrival_stamp:'出勤日',departure_stamp:'退勤日'};
 export const columnLabel=c=>c.label?.trim()||LABELS[c.name]||c.name;
 export const rowLabel=(t,i)=>t.row_labels?.[i]?.trim()||`${t.header_rows?.includes(i)?'見':'行'}${i+1}`;
 export const FLAG_LABELS = {missing_or_blank:'空欄・未認識',low_confidence:'低信頼度',invalid_time:'時刻形式を確認',cross_month_date_unresolved:'年月日未確定',variant_disagreement:'青除去候補と相違',manual_review:'目視確認',not_processed:'未処理'};
@@ -15,6 +15,7 @@ export function validateTemplate(input) {
   const names=new Set();
   for(const c of t.columns){
     if(typeof c.name!=='string'||! /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(c.name)||names.has(c.name)) throw Error('列名は重複しない英数字・アンダースコアにしてください。');
+    if(c.label==='出勤印')c.label='出勤日';if(c.label==='退勤印')c.label='退勤日';
     names.add(c.name);c.kind??='text';c.direction??='horizontal';
     if(c.rotation_degrees!==undefined&&(!finite(c.rotation_degrees)||Math.abs(c.rotation_degrees)>180))throw Error('列の回転角度は−180〜180度にしてください。');
     if(c.label!==undefined&&(typeof c.label!=='string'||c.label.length>80))throw Error('列の見出し名は80文字以内で指定してください。');
