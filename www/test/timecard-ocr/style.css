@@ -63,3 +63,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .app-shell:is([data-stage="4"],[data-stage="5"]) .results-panel.has-review .ocr-result-area #ocr-result-wrap{flex-shrink:1}
 
 .app-version{flex:none;font-size:.7rem;color:#68808c;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+#ocr-runtime{font-size:.68rem;white-space:nowrap}.ocr-controls{flex-wrap:wrap}#ocr-profile{min-width:72px}

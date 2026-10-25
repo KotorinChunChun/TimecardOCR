@@ -48,6 +48,14 @@ python -m http.server 9097 --bind 127.0.0.1 --directory www
 
 表示した結合画像そのものをOCR入力へ渡します。画像全体の文字検出1回と、検出した全ての文字行の認識1回で構成するPP-OCRv5の全体パイプラインです。セル別のOCRや失敗時の小分け処理へは切り替えません。原色・青除去の比較ON時だけ画像全体を各1回、計2回処理します。端末のメモリ上限を超えた場合はエラーを表示します。
 
+## モデル・実行方式・使用要件
+
+④のツールバーで「軽量」「標準」「高精度」と「自動」「CPU」「GPU」を選べます。高精度は従来と同じ重みで、新規作業の初期モデルです。軽量はmobile検出・認識、標準はserver検出とmobile認識、高精度はserver検出・認識を使います。速度と精度は画像によって変わります。モデルの説明は選択欄のツールチップで確認できます。
+
+CPU用の認識データは軽量約46MB、標準約129MB、高精度約197MB、GPU用はそれぞれ約61MB、144MB、212MBです。アプリのキャッシュや複数モデルの保存分は別に必要です。切替時に不足する構成だけ「準備する」から保存できます。GPUはWebGPU対応環境で選べ、実際に使用した検出・認識の実行先を表示します。GPU指定の初期化が失敗する場合はCPUを選べます。自動でCPUへ移行した場合も実際の実行先を表示します。
+
+モデル切替だけでは画像と結果は変わりません。作業JSONには選択を保存し、旧作業は高精度・CPUで開きます。「その他」→「使用要件・注意事項」に使用環境、サーバーへの画像・結果の非送信／非保存、端末への手動保存、モデルのキャッシュ、免責を記載しています。
+
 ## 型変換と画像の対応確認
 
 ④⑤では「カード全体」「切出し」「結合画像」を切り替えられます。画像または結果セルを押すと対応箇所を選択し、拡大・修正画面を右へ表示します。選択枠はOCR画像に焼き込みません。3ペインの境界はドラッグまたは左右キーで調整し、①～③、④、⑤で別々に幅を記憶します。④⑤の初期幅はFHDでおおよそ27:58:15です。
@@ -63,10 +71,12 @@ python -m http.server 9097 --bind 127.0.0.1 --directory www
 依存ファイルを取得後、次を実行します。
 
 ```powershell
-node --test scripts/test-timecard-browser.mjs scripts/test-timecard-points.mjs scripts/test-timecard-workflow.mjs scripts/test-timecard-ocr-prep.mjs scripts/test-timecard-engine.mjs scripts/test-timecard-drop.mjs scripts/test-timecard-page.mjs scripts/test-timecard-ui.mjs scripts/test-timecard-whole.mjs scripts/test-timecard-four-geometry.mjs scripts/test-timecard-four-review.mjs scripts/test-timecard-four-atlas.mjs scripts/test-timecard-editor-refinement.mjs scripts/test-timecard-casting.mjs
+node --test scripts/test-timecard-browser.mjs scripts/test-timecard-points.mjs scripts/test-timecard-workflow.mjs scripts/test-timecard-ocr-prep.mjs scripts/test-timecard-engine.mjs scripts/test-timecard-drop.mjs scripts/test-timecard-page.mjs scripts/test-timecard-ui.mjs scripts/test-timecard-whole.mjs scripts/test-timecard-four-geometry.mjs scripts/test-timecard-four-review.mjs scripts/test-timecard-four-atlas.mjs scripts/test-timecard-editor-refinement.mjs scripts/test-timecard-casting.mjs scripts/test-timecard-models.mjs
 ```
 
 ⑤の型変換追加まで自動テスト157件と、合成の保存済みOCR結果を使った内蔵ブラウザーの動作確認を実施しました。[4工程化の報告](../dev/history/v1.1.0/timecard-four-stage-imp.md)と[編集改善の報告](../dev/history/v1.1.0/timecard-editor-refinement-imp.md)に結果を記録しています。⑤は[相互選択・型変換の報告](../dev/history/v1.1.0/timecard-cast-imp.md)を参照してください。提供された実カードの保存済みOCR結果は、メモリー上の復元・型変換だけを追加確認し、コピーや記録は保存していません。実OCRの再実行、物理Edge・モバイル端末の操作は今回の検証対象外です。実際の利用時は原画像と照合してください。
+
+モデル選択・GPU追加後は168件の自動試験と、合成16セルの各CPU／GPU構成の実認識を確認しています。[モデル選択・GPUの報告](../dev/history/v1.1.0/timecard-models-imp.md)に測定範囲と未検証の条件を記録しています。
 
 ## データとライセンス
 

@@ -1,6 +1,6 @@
-const SHELL='timecard-ocr-shell-v1.1.0-r75';
+const SHELL='timecard-ocr-shell-v1.1.0-r81';
 const ASSETS='timecard-ocr-assets-v1.1.0';
-const CORE=['./','index.html','style.css','app.mjs','bootstrap.mjs','update.html','update.mjs','edit-history.mjs','casting.mjs','focus-tools.mjs','core.mjs','imaging.mjs','ocr-prep.mjs','ocr-progress.mjs','color-tools.mjs','card-fields.mjs','card-geometry.mjs','card-detector.mjs','card-range-editor.mjs','image-tools.mjs','whole-engine.mjs','whole-result.mjs','engine-client.mjs','image-drop.mjs','ui-tools.mjs','point-tools.mjs','table-detector.mjs','workflow.mjs','grid-editor.mjs','grid-autoplacement.mjs','review-tools.mjs','page-layout.mjs','atlas.mjs','storage.mjs','ocr-worker.mjs','assets.json','template-original.json','THIRD_PARTY.md','vendor/sqljs/sql-wasm.js','vendor/sqljs/sql-wasm.wasm'];
+const CORE=['./','index.html','style.css','app.mjs','bootstrap.mjs','update.html','update.mjs','edit-history.mjs','ocr-options.mjs','casting.mjs','focus-tools.mjs','core.mjs','imaging.mjs','ocr-prep.mjs','ocr-progress.mjs','color-tools.mjs','card-fields.mjs','card-geometry.mjs','card-detector.mjs','card-range-editor.mjs','image-tools.mjs','whole-engine.mjs','whole-result.mjs','engine-client.mjs','image-drop.mjs','ui-tools.mjs','point-tools.mjs','table-detector.mjs','workflow.mjs','grid-editor.mjs','grid-autoplacement.mjs','review-tools.mjs','page-layout.mjs','atlas.mjs','storage.mjs','ocr-worker.mjs','assets.json','template-original.json','THIRD_PARTY.md','vendor/sqljs/sql-wasm.js','vendor/sqljs/sql-wasm.wasm'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(SHELL).then(c=>c.addAll(CORE.map(path=>new Request(new URL(path,self.location.href),{cache:'reload'})))).then(()=>self.skipWaiting())));
 async function migrateAssets(){
   const assets=await caches.open(ASSETS),shell=await caches.open(SHELL),base=new URL('./',self.location.href),manifest=await(await shell.match(new URL('assets.json',base).href)).json(),key=new URL('__asset-revisions',base).href,previous=await assets.match(key),known=previous?await previous.json():{},next={};
@@ -17,6 +17,8 @@ self.addEventListener('activate',event=>event.waitUntil(migrateAssets().then(()=
 self.addEventListener('fetch',event=>{
   const url=new URL(event.request.url),base=new URL('./',self.location.href);
   if(event.request.method!=='GET'||url.origin!==base.origin||!url.pathname.startsWith(base.pathname))return;
+  // MarkdownはAcceptに応じてプレビュー／原文が変わるため旧本文キャッシュを使わない。
+  if(/\.(md|markdown)$/i.test(url.pathname))return;
   const relative=url.pathname.slice(base.pathname.length);
   // 選択画像や結果は通信しない。静的なアプリ・モデルだけを扱う。
   if(!CORE.includes(relative)&&relative!==''&&event.request.mode!=='navigate'&&!/^(vendor\/(?:onnxruntime|paddleocr)\/|models\/)/.test(relative))return;

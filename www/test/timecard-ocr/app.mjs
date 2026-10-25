@@ -1,3 +1,4 @@
+import {OCR_PROFILES,ocrOptions,ocrProfile,resolveOCRDevice,requiredOCRAssets,assetMegabytes,providerLabel} from './ocr-options.mjs';
 import {CAST_TYPES,defaultCastConfig,validateCastConfig,castConfigForCell,castCells,correctCast,castNeedsReview,approveCastCells,undoCastApproval,castTableRows,castEvidenceRows} from './casting.mjs';
 import {hitPolygon,hitAtlas} from './focus-tools.mjs';
 import {createEditHistory,imageCorners,initialCardPoints} from './edit-history.mjs';
@@ -21,9 +22,11 @@ import {bindImageDropZone} from './image-drop.mjs';
 import {buildWholeAtlas,ATLAS_REVISION} from './atlas.mjs';
 import {debounceTask,popupPosition,bindPaneSplitter,reviewSnapshot,reviewChanged,pageConfirmation} from './ui-tools.mjs';
 const $=id=>document.getElementById(id),CACHE='timecard-ocr-assets-v1.1.0';
+let ocrManifestPromise;
+const readOCRManifest=()=>ocrManifestPromise??=fetch('./assets.json').then(response=>{if(!response.ok)throw Error('認識データ台帳を読み込めません。');return response.json();}).catch(error=>{ocrManifestPromise=null;throw error;});
 $('app-version').textContent='v'+VERSION;
 const confirmPage=pageConfirmation($('confirm-dialog'));
-const state={source:null,card:null,normalized:null,cardCal:null,cal:null,cardPoints:[],tablePoints:[],points:[],cells:[],selected:null,mode:'original',name:'',hash:'',worker:null,ready:false,engineSaved:false,engineChecked:false,busy:false,running:false,dirty:false,cardDirty:true,rangeDirty:true,geometryDirty:true,drag:null,activePoint:-1,pointOrigin:'manual',stage:1,rangeMode:'card',field:'number',column:0,row:0,axis:null,gridMode:'adjust',gridBase:null,previewKey:'',imageRevision:0,definitionDirty:false,selectedRows:[],selectedColumns:[],rowAnchor:0,columnAnchor:0,inputView:'crops',atlas:null,atlasKey:'',blueAtlas:null,blueAtlasKey:'',ocrPrevious:null,approvalMode:false,approvalSelection:new Set(),approvalUndo:null,approvalAnchor:null,gridUndo:null,legacy:false,lastOCRSettings:null,staleCells:[],fieldSnapshot:null,castTarget:"",castControlKey:"",castApprovalUndo:null};
+const state={source:null,card:null,normalized:null,cardCal:null,cal:null,cardPoints:[],tablePoints:[],points:[],cells:[],selected:null,mode:'original',name:'',hash:'',worker:null,ready:false,engineSaved:false,engineChecked:false,busy:false,running:false,dirty:false,cardDirty:true,rangeDirty:true,geometryDirty:true,drag:null,activePoint:-1,pointOrigin:'manual',stage:1,rangeMode:'card',field:'number',column:0,row:0,axis:null,gridMode:'adjust',gridBase:null,previewKey:'',imageRevision:0,definitionDirty:false,selectedRows:[],selectedColumns:[],rowAnchor:0,columnAnchor:0,inputView:'crops',atlas:null,atlasKey:'',blueAtlas:null,blueAtlasKey:'',ocrPrevious:null,approvalMode:false,approvalSelection:new Set(),approvalUndo:null,approvalAnchor:null,gridUndo:null,legacy:false,lastOCRSettings:null,staleCells:[],fieldSnapshot:null,castTarget:"",castControlKey:"",castApprovalUndo:null,ocrOptions:ocrOptions(),gpuAvailable:false,gpuChecked:false,runtime:null,assetCheck:0};
 const simple=()=>gridTemplate({name:'勤務表',size:[1000,1400],row_edges:Array.from({length:17},(_,i)=>Math.round(168+i*(1400-168)/16)),row_padding:6,confidence_threshold:.9,columns:[{name:'day',kind:'day',x:[0,120]},{name:'arrival',kind:'time',x:[120,410]},{name:'departure',kind:'time',x:[410,700]},{name:'subtotal',kind:'duration',x:[700,1000]}]});
 let template=await fetch('./template-original.json').then(response=>{if(!response.ok)throw Error('用紙定義を読み込めません。');return response.json();}).then(gridTemplate).catch(error=>{console.error(error);return simple();}),pendingInit=null,reviewBaseline=null,previewFrame=0,atlasSequence=0;
 const thumbnails=new Map(),editHistory=createEditHistory();
@@ -80,7 +83,7 @@ function sync(){
  for(const [id,stage]of [['step-card',1],['step-table',2],['step-grid',3],['step-ocr',4],['step-cast',5]]){$(id).setAttribute('aria-pressed',String(s===stage));$(id).disabled=state.busy||(stage===2&&(!state.card||state.cardDirty))||(stage>2&&(!state.normalized||state.geometryDirty)&&!(state.legacy&&state.cells.length))||(stage===5&&!hasOCRResults());}
  document.querySelectorAll('.stage-review-only').forEach(e=>e.hidden=s<4);
  $('settings-title').textContent=['','①の詳細設定','②の詳細設定','③の詳細設定','④の詳細設定','⑤の補正設定'][s];
- $('finish-ocr').disabled=state.busy||!hasOCRResults();$('ocr-review-reasons').hidden=s===5;$('cast-review-reasons').hidden=s!==5;document.querySelectorAll('.cast-detail').forEach(e=>e.hidden=s!==5);$('corrected-label').textContent=s===5?'変換後の値':'確認後の値';syncCastControls();
+ $('finish-ocr').disabled=state.busy||!hasOCRResults();$('ocr-review-reasons').hidden=s===5;$('cast-review-reasons').hidden=s!==5;document.querySelectorAll('.cast-detail').forEach(e=>e.hidden=s!==5);$('corrected-label').textContent=s===5?'変換後の値':'確認後の値';syncCastControls();syncModelControls();
  const points=pointEditing(),src=pointSource(),method=pointMethod();
  $('point-settings').hidden=!points;$('field-settings').hidden=!(s===2&&state.rangeMode==='card');$('method-control').hidden=s!==2;
  $('auto-points').hidden=!points;$('auto-points').textContent=s===1?'カードの四隅を自動検出':'表の四隅を自動指定';$('auto-points').disabled=state.busy||!src;
@@ -392,12 +395,13 @@ function saveCell(next=false){
   const index=state.cells.findIndex(x=>x.id===c.id),target=next?state.cells.slice(index+1).find(x=>visibleCell(x)):null;selectCell(target?.id??c.id);message('');
 }
 const ocrRefresh=debounceTask(()=>{renderTable();if(state.selected)selectCell(state.selected);},30);
-function stopWorker(){ocrRefresh.cancel();state.worker?.terminate();state.worker=null;state.ready=false;}
+function stopWorker(){ocrRefresh.cancel();state.worker?.terminate();state.worker=null;state.ready=false;state.runtime=null;}
 async function initWorker({quiet=false}={}){
   if(state.ready)return;if(pendingInit)return pendingInit;
   stopWorker();const worker=new Worker('./ocr-worker.mjs',{type:'module'});state.worker=worker;
   pendingInit=initializeWorker(worker,{
-    onError:error=>{if(state.worker!==worker)return;ocrProgress.finish('error');state.ready=false;state.running=false;state.engineSaved=false;state.ocrPrevious=null;message(error.message,true);setBusy(false);},
+    initData:{options:{...state.ocrOptions,device:resolveOCRDevice(state.ocrOptions.device,state.gpuAvailable)},allowCPUFallback:state.ocrOptions.device==='auto'},
+    onError:error=>{if(state.worker!==worker)return;ocrProgress.finish('error');state.ready=false;state.running=false;state.ocrPrevious=null;message(error.message,true);setBusy(false);},
     onMessage:({data})=>{
       if(state.worker!==worker)return;
       if(data.type==='stage')ocrProgress.setStage(data.stage,data);
@@ -409,7 +413,7 @@ async function initWorker({quiet=false}={}){
       }
       if(data.type==='complete'){state.lastOCRSettings=clone(state.runningSettings);ocrProgress.finish('done');ocrRefresh.cancel();state.running=false;state.ocrPrevious=null;if(data.stats){$('run').dataset.lastStats=JSON.stringify(data.stats);$('run').title=`前回: ${(data.stats.totalMs/1000).toFixed(1)}秒・${data.stats.ocrCalls??1}回OCR・${data.stats.inferences}回モデル計算・${data.stats.threads??1}スレッド`;}setBusy(false);renderTable();if(state.selected)selectCell(state.selected);message('');}
     }
-  }).then(()=>{state.ready=true;state.engineSaved=true;sync();}).finally(()=>{pendingInit=null;});return pendingInit;
+  }).then(data=>{state.runtime=data.runtime;state.ready=true;state.engineSaved=true;sync();}).finally(()=>{pendingInit=null;});return pendingInit;
 }
 async function installEngine({silent=false}={}){
   if(state.busy)return;setBusy(true);if(!silent)message('データを確認しています…');
@@ -417,8 +421,8 @@ async function installEngine({silent=false}={}){
     if(!('serviceWorker'in navigator)||!('caches'in globalThis))throw Error('HTTPSで開き、Service Worker・サイト保存を許可したブラウザーを使ってください。');
     // Cache APIへの保存はページがSWに制御されていなくても可能。強制再読込時に待ち続けない。
     await registerServiceWorker();
-    const manifest=await(await fetch('./assets.json')).json(),cache=await caches.open(CACHE),total=manifest.files.reduce((s,f)=>s+f.bytes,0);let done=0;
-    for(const file of manifest.files){
+    const manifest=await readOCRManifest(),files=requiredOCRAssets(manifest,state.ocrOptions,state.gpuAvailable),cache=await caches.open(CACHE),total=files.reduce((s,f)=>s+f.bytes,0);let done=0;
+    for(const file of files){
       const url=new URL(file.path,location.href).href,cached=await cache.match(url);
       let data;
       if(!cached){
@@ -437,7 +441,7 @@ async function installEngine({silent=false}={}){
 
 async function runOCR(selection={type:'all'}){
  if(state.busy||state.stage!==4||state.geometryDirty||!state.normalized)return;if(unsavedCell())throw Error('先にセルの編集を保存してください。');const targets=ocrTargets(state.cells,selection);inputPreview.cancel();state.approvalSelection.clear();ocrProgress.start(state.ready?'preparing':'initializing');
- try{if(!state.ready){setBusy(true);try{await initWorker();}finally{setBusy(false);}}ocrProgress.setStage('preparing');state.ocrPrevious=new Map(targets.map(c=>[c.id,c]));const rs=targets.map(({id,row_index,column_index,column_name,kind,direction,rotation_degrees,bbox,source,is_header_row,is_header_column,color_cleanup,card_field})=>({id,row_index,column_index,column_name,kind,direction,rotation_degrees,bbox,source,is_header_row,is_header_column,color_cleanup,card_field}));if(selection.type==='cell')await selectCell(selection.id);state.running=true;state.runningSettings={compareBlue:$('compare-blue').checked,blueHue:clone(template.blue_hue),blueSaturation:template.blue_saturation};setBusy(true);$('progress').max=rs.length;$('progress').removeAttribute('value');message('');
+ try{if(!state.ready){setBusy(true);try{await initWorker();}finally{setBusy(false);}}ocrProgress.setStage('preparing');state.ocrPrevious=new Map(targets.map(c=>[c.id,c]));const rs=targets.map(({id,row_index,column_index,column_name,kind,direction,rotation_degrees,bbox,source,is_header_row,is_header_column,color_cleanup,card_field})=>({id,row_index,column_index,column_name,kind,direction,rotation_degrees,bbox,source,is_header_row,is_header_column,color_cleanup,card_field}));if(selection.type==='cell')await selectCell(selection.id);state.running=true;state.runningSettings={...state.ocrOptions,runtime:clone(state.runtime),compareBlue:$('compare-blue').checked,blueHue:clone(template.blue_hue),blueSaturation:template.blue_saturation};setBusy(true);$('progress').max=rs.length;$('progress').removeAttribute('value');message('');
  const job={type:'recognize',regions:rs,mode:selection.type,compareBlue:state.runningSettings.compareBlue,threshold:template.confidence_threshold,blueHue:template.blue_hue,blueSaturation:template.blue_saturation};
  if(selection.type==='all'){state.inputView='atlas';renderTable();const atlas=getAtlas(),shown=renderAtlas(),evidence=await imageEvidence(shown);$('run').dataset.inputSha256=evidence.sha256;job.atlasBitmap=await createImageBitmap(shown);job.layout=atlas.layout;const transfer=[job.atlasBitmap];if(job.compareBlue){job.filteredAtlasBitmap=await createImageBitmap(getBlueAtlas());transfer.push(job.filteredAtlasBitmap);}state.worker.postMessage(job,transfer);}else{job.bitmap=await createImageBitmap(cellImage(targets[0]));state.worker.postMessage(job,[job.bitmap]);}
  }catch(error){ocrProgress.finish('error');state.running=false;setBusy(false);state.ocrPrevious=null;throw error;}
@@ -445,22 +449,22 @@ async function runOCR(selection={type:'all'}){
 
 function download(data,name,type){const blob=data instanceof Blob?data:new Blob([data],{type}),url=URL.createObjectURL(blob),link=el('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function cardInformation(){return Object.fromEntries(CARD_FIELDS.map(f=>[f.key,state.cells.find(c=>c.card_field===f.key)?.value??'']));}
-function metadata(){return {work_schema:2,card_information:cardInformation(),name:state.name,source_sha256:state.hash,template,card_calibration:state.cardCal,calibration:state.cal,stage:state.stage,range_mode:state.rangeMode,field:state.field,card_points:state.cardPoints,table_points:state.tablePoints,card_dirty:state.cardDirty,range_dirty:state.rangeDirty,legacy:state.legacy,last_ocr_settings:state.lastOCRSettings,compare_blue:$('compare-blue').checked,input_view:state.inputView,cast_target:state.castTarget,created_at:new Date().toISOString()};}
+function metadata(){return {work_schema:2,ocr_options:state.ocrOptions,card_information:cardInformation(),name:state.name,source_sha256:state.hash,template,card_calibration:state.cardCal,calibration:state.cal,stage:state.stage,range_mode:state.rangeMode,field:state.field,card_points:state.cardPoints,table_points:state.tablePoints,card_dirty:state.cardDirty,range_dirty:state.rangeDirty,legacy:state.legacy,last_ocr_settings:state.lastOCRSettings,compare_blue:$('compare-blue').checked,input_view:state.inputView,cast_target:state.castTarget,created_at:new Date().toISOString()};}
 function warnExport(){const count=state.cells.filter(c=>displayReasons(c).length).length;if(count)message(`要確認${count}件を含めて書き出しました。`);}
 function imageDataURL(source){const out=document.createElement('canvas');out.width=source.width;out.height=source.height;out.getContext('2d').drawImage(source,0,0);return out.toDataURL('image/png');}
 async function saveProject(){if(unsavedCell())throw Error('編集中のセルを先に保存してください。');download(JSON.stringify({application:'timecard-ocr-browser',version:VERSION,...metadata(),image:imageDataURL(state.source),cells:state.cells,stale_cells:state.staleCells??[]},null,2),'timecard-work.json','application/json');state.dirty=false;message('');}
 async function readJSON(file,max=2000000){if(!file)throw Error('ファイルを選択してください。');if(file.size>max)throw Error('JSONファイルが大きすぎます。');return JSON.parse(await file.text());}
 async function restoreProject(file){
  if(!await discardOK())return;const saved=await readJSON(file,100000000);if(saved.application!=='timecard-ocr-browser'||saved.version!==VERSION||typeof saved.image!=='string'||!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(saved.image)||!Array.isArray(saved.cells))throw Error('このツールで保存した作業JSONを選んでください。');
- const t=validateTemplate(saved.template),binary=atob(saved.image.split(',')[1]),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0)),bitmap=await createImageBitmap(new Blob([bytes],{type:'image/png'}));if(bitmap.width*bitmap.height>24000000){bitmap.close();throw Error('画像が大きすぎます。');}
+ const savedOptions=ocrOptions(saved.ocr_options??{profile:'accurate',device:'cpu'}),t=validateTemplate(saved.template),binary=atob(saved.image.split(',')[1]),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0)),bitmap=await createImageBitmap(new Blob([bytes],{type:'image/png'}));if(bitmap.width*bitmap.height>24000000){bitmap.close();throw Error('画像が大きすぎます。');}
  const source=canvas(bitmap.width,bitmap.height);source.getContext('2d').drawImage(bitmap,0,0);bitmap.close();let card=null,cardCal=null,normalized=null,cal=null,legacy=saved.work_schema!==2||!!saved.legacy;
  if(saved.work_schema===2&&saved.card_calibration){const c=saved.card_calibration,size=t.card_layout?.size;if(!size)throw Error('カード基準サイズがありません。');cardCal=calibration(c.source_points,'perspective',source.width,source.height,size);card=warp(source,size,cardCal.inverse);}
  if(saved.calibration){const image=legacy?source:card;if(!image)throw Error('表の元になるカード補正がありません。');const c=saved.calibration;cal=calibration(c.source_points,c.method,image.width,image.height,t.size);normalized=warp(source,t.size,legacy?cal.inverse:multiplyMatrices(cardCal.inverse,cal.inverse));}
  let cells=[];if(saved.cells.length){if(!normalized)throw Error('読取結果の補正情報がありません。');const ref=t.card_coordinate_space==='card_image'?card:source;if(!ref)throw Error('カード情報の基準画像がありません。');cells=validateWorkCells(saved.cells,t,[ref.width,ref.height]);}
- clearResults();template=t;state.source=source;state.card=card;state.cardCal=cardCal;state.normalized=normalized;state.cal=cal;state.cells=cells;state.name=String(saved.name??'復元画像');state.hash=String(saved.source_sha256??'');state.legacy=legacy;state.cardPoints=initialCardPoints(source.width,source.height,{points:saved.work_schema===2?saved.card_points:undefined,confirmed:cardCal?.source_points});state.tablePoints=clone(saved.work_schema===2?saved.table_points??cal?.source_points??[]:[]);state.cardDirty=legacy||!card||!!saved.card_dirty;state.rangeDirty=!normalized||!!saved.range_dirty;state.geometryDirty=state.cardDirty||state.rangeDirty;state.rangeMode=saved.range_mode==='table'?'table':'card';state.field=CARD_FIELDS.some(f=>f.key===saved.field)?saved.field:'number';state.lastOCRSettings=saved.last_ocr_settings??null;$('compare-blue').checked=saved.compare_blue===true;state.inputView=['crops','atlas','blue','card'].includes(saved.input_view)?saved.input_view:'crops';$('card-width').value=t.card_layout?.size[0]??'';$('card-height').value=t.card_layout?.size[1]??'';
+ clearResults();if(JSON.stringify(savedOptions)!==JSON.stringify(state.ocrOptions)){stopWorker();state.runtime=null;}state.ocrOptions=savedOptions;template=t;state.source=source;state.card=card;state.cardCal=cardCal;state.normalized=normalized;state.cal=cal;state.cells=cells;state.name=String(saved.name??'復元画像');state.hash=String(saved.source_sha256??'');state.legacy=legacy;state.cardPoints=initialCardPoints(source.width,source.height,{points:saved.work_schema===2?saved.card_points:undefined,confirmed:cardCal?.source_points});state.tablePoints=clone(saved.work_schema===2?saved.table_points??cal?.source_points??[]:[]);state.cardDirty=legacy||!card||!!saved.card_dirty;state.rangeDirty=!normalized||!!saved.range_dirty;state.geometryDirty=state.cardDirty||state.rangeDirty;state.rangeMode=saved.range_mode==='table'?'table':'card';state.field=CARD_FIELDS.some(f=>f.key===saved.field)?saved.field:'number';state.lastOCRSettings=saved.last_ocr_settings??null;$('compare-blue').checked=saved.compare_blue===true;state.inputView=['crops','atlas','blue','card'].includes(saved.input_view)?saved.input_view:'crops';$('card-width').value=t.card_layout?.size[0]??'';$('card-height').value=t.card_layout?.size[1]??'';
  if(Array.isArray(saved.stale_cells)&&saved.stale_cells.length){if(saved.stale_cells.length>500||saved.stale_cells.some(c=>!c||typeof c.id!=='string'||!Array.isArray(c.history)||typeof c.raw!=='string'||typeof c.value!=='string'))throw Error('保存した変更前の履歴が不正です。');state.staleCells=saved.stale_cells.filter(c=>!isRetiredCardRegion(c));}
  if(state.cal){const definitions=new Map(currentRegions().map(r=>[r.id,r]));state.cells=state.cells.map(c=>({...c,input_revision:c.input_revision??definitions.get(c.id)?.input_revision}));}
- state.stage=legacy&&cells.length?4:Math.max(1,Math.min(5,Number(saved.stage)||1));if(!card&&!legacy)state.stage=1;if(state.stage>2&&!normalized)state.stage=card?2:1;if(state.stage===5){ensureCastProfiles();state.cells=castCells(state.cells,template);}state.castTarget=String(saved.cast_target??'');state.points=clone(state.stage===1?state.cardPoints:state.tablePoints);$('method').value=cal?.method??'perspective';state.dirty=false;$('image-name').textContent=state.name+' · 復元済み';hideReview();renderTemplate();renderTable();draw();if(state.stage>=4&&state.cells.length)await selectCell(state.cells.find(c=>c.row_index>0&&!c.is_header_row)?.id??state.cells[0].id);message(legacy?'旧作業の結果を保持しています。新しい読取りは①でカード補正を確定してから進めてください。':'');
+ state.stage=legacy&&cells.length?4:Math.max(1,Math.min(5,Number(saved.stage)||1));if(!card&&!legacy)state.stage=1;if(state.stage>2&&!normalized)state.stage=card?2:1;if(state.stage===5){ensureCastProfiles();state.cells=castCells(state.cells,template);}state.castTarget=String(saved.cast_target??'');state.points=clone(state.stage===1?state.cardPoints:state.tablePoints);$('method').value=cal?.method??'perspective';state.dirty=false;$('image-name').textContent=state.name+' · 復元済み';hideReview();renderTemplate();renderTable();draw();if(state.stage>=4&&state.cells.length)await selectCell(state.cells.find(c=>c.row_index>0&&!c.is_header_row)?.id??state.cells[0].id);message(legacy?'旧作業の結果を保持しています。新しい読取りは①でカード補正を確定してから進めてください。':'');await refreshEngineAvailability();
 }
 async function demo({alignment=false}={}){
  if(state.busy)return;const paper=document.createElement('canvas');paper.width=1000;paper.height=900;const ctx=paper.getContext('2d');ctx.fillStyle='#fffdf2';ctx.fillRect(0,0,1000,900);ctx.strokeStyle='#4a788c';ctx.lineWidth=3;ctx.strokeRect(2,2,996,896);ctx.fillStyle='#222';ctx.font='36px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';['123','TEST','DEV','2026/10'].forEach((v,i)=>ctx.fillText(v,140+i*235,110));
@@ -524,17 +528,26 @@ window.addEventListener('beforeunload',event=>{if(state.dirty||unsavedCell()){ev
 function positionMenu(menu){const popup=menu.querySelector(':scope>div');if(!popup)return;const anchor=menu.querySelector('summary').getBoundingClientRect();popup.style.position='fixed';popup.style.right='auto';const width=popup.getBoundingClientRect().width;popup.style.left=Math.max(8,Math.min(anchor.left,innerWidth-width-8))+'px';const top=Math.min(anchor.bottom+5,innerHeight-100);popup.style.top=top+'px';popup.style.maxHeight=Math.max(80,innerHeight-top-12)+'px';}
 const menuIds=['settings-menu','save-menu','definition-menu','other-menu','export-menu','grid-auto-menu','reason-menu'];for(const id of menuIds)$(id).addEventListener('toggle',()=>{if($(id).open){for(const other of menuIds)if(other!==id)$(other).open=false;if(id==='definition-menu'&&!state.definitionDirty)showDefinition();if(id==='settings-menu'&&state.stage===3)renderTemplate();positionMenu($(id));}});window.addEventListener('resize',()=>{for(const id of menuIds)if($(id).open)positionMenu($(id));});document.addEventListener('keydown',event=>{const input=event.target?.closest?.('input,textarea,select,[contenteditable=true]');if(!input&&!document.querySelector('dialog[open]')&&(event.ctrlKey||event.metaKey)&&['z','y'].includes(event.key.toLowerCase())&&state.stage<4){event.preventDefault();restoreEdit(event.key.toLowerCase()==='y'||event.shiftKey?'redo':'undo');return;}if(event.key==='Escape'){for(const id of menuIds)$(id).open=false;$('heading-editor').hidden=true;}});document.addEventListener('click',event=>{for(const id of menuIds)if(!$(id).contains(event.target))$(id).open=false;if(event.target!==$('open-heading')&&!$('heading-editor').contains(event.target))$('heading-editor').hidden=true;});
 renderTemplate();sync();resetEditHistory();new ResizeObserver(()=>{if(state.source)draw();}).observe($('image-canvas'));
+function syncModelControls(){
+ $('ocr-profile').value=state.ocrOptions.profile;$('ocr-device').value=state.ocrOptions.device;
+ for(const id of ['ocr-profile','ocr-device'])$(id).disabled=state.busy;
+ for(const profile of OCR_PROFILES){const option=$('ocr-profile').querySelector(`[value="${profile.id}"]`);option.title=profile.description;}
+ $('ocr-profile').title=ocrProfile(state.ocrOptions.profile).description;$('ocr-device').querySelector('[value="gpu"]').disabled=!state.gpuAvailable;
+ $('ocr-device').title=state.gpuChecked?(state.gpuAvailable?'WebGPUを利用できます。自動は初期化時にCPUへ移行する場合があります。':'このブラウザーではGPUを利用できません。'):'GPU対応を確認中';
+ $('ocr-runtime').textContent=state.runtime?providerLabel(state.runtime):state.gpuChecked?(state.gpuAvailable?'GPU利用可':'GPU未対応'):'GPU確認中';
+ $('ocr-runtime').title=state.runtime?'実際にモデルを初期化した実行先です。GPUでも一部の演算はCPUで処理される場合があります。':'';
+}
+async function refreshEngineAvailability(){
+ const check=++state.assetCheck;state.engineChecked=false;state.engineSaved=false;sync();
+ try{const manifest=await readOCRManifest(),files=requiredOCRAssets(manifest,state.ocrOptions,state.gpuAvailable),cache=await caches.open(CACHE),saved=await Promise.all(files.map(f=>cache.match(new URL(f.path,location.href).href)));if(check!==state.assetCheck)return;state.engineSaved=saved.every(Boolean);state.engineChecked=true;document.querySelector('#engine-panel > span').textContent=`${ocrProfile(state.ocrOptions.profile).label}の認識データを保存（約${assetMegabytes(files)}MB）`;sync();}
+ catch(error){if(check!==state.assetCheck)return;state.engineSaved=false;state.engineChecked=true;sync();message(error.message,true);}
+}
+async function changeOCROptions(){
+ if(state.busy)return;const next=ocrOptions({profile:$('ocr-profile').value,device:$('ocr-device').value});resolveOCRDevice(next.device,state.gpuAvailable);stopWorker();ocrProgress.reset();state.runtime=null;state.ocrOptions=next;state.dirty=state.dirty||!!state.source;message('');await refreshEngineAvailability();
+}
+$('ocr-profile').onchange=guard(changeOCROptions);$('ocr-device').onchange=guard(changeOCROptions);
 async function bootEngine(){
-  try{
-    if('serviceWorker'in navigator)await registerServiceWorker();
-    if('caches'in globalThis){
-      const response=await fetch('./assets.json');if(!response.ok)throw Error('認識データ台帳を読み込めません。');
-      const manifest=await response.json(),cache=await caches.open(CACHE);
-      document.querySelector('#engine-panel > span').textContent=`OCR用データを保存（約${Math.ceil(manifest.files.reduce((sum,file)=>sum+file.bytes,0)/1000000)}MB）`;
-      state.engineSaved=manifest.files.length>0&&(await Promise.all(manifest.files.map(f=>cache.match(new URL(f.path,location.href).href)))).every(Boolean);
-    }
-    state.engineChecked=true;sync();
-    // モデル初期化はOCRを押した時だけ行い、画像選択・表編集を起動時にロックしない。
-  }catch(error){state.engineChecked=true;state.engineSaved=false;sync();message(error.message||String(error),true);}
+ try{if('serviceWorker'in navigator)await registerServiceWorker();let timer;try{state.gpuAvailable=!!await Promise.race([navigator.gpu?.requestAdapter?.(),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),5000);})]);}catch{state.gpuAvailable=false;}finally{clearTimeout(timer);state.gpuChecked=true;}await refreshEngineAvailability();}
+ catch(error){state.engineChecked=true;state.engineSaved=false;sync();message(error.message||String(error),true);}
 }
 bootEngine();

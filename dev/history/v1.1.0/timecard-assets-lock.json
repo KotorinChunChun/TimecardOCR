@@ -19,6 +19,21 @@
           "member": "package/dist/ort-wasm-simd-threaded.wasm",
           "path": "vendor/onnxruntime/ort-wasm-simd-threaded.wasm",
           "sha256": "be0e129949062ad50290ef94683fac8be5bb6156f709e030b7a5f1661a2f6c17"
+        },
+        {
+          "member": "package/dist/ort.webgpu.min.mjs",
+          "path": "vendor/onnxruntime/ort.webgpu.min.mjs",
+          "sha256": "c50f835ca8ee0999fef441f9319e507b0247923943aec034418b889904e94789"
+        },
+        {
+          "member": "package/dist/ort-wasm-simd-threaded.asyncify.mjs",
+          "path": "vendor/onnxruntime/ort-wasm-simd-threaded.asyncify.mjs",
+          "sha256": "dee69056fbfedf946ba0d9026e191c1361c5455895355e03f4346bf9308e58eb"
+        },
+        {
+          "member": "package/dist/ort-wasm-simd-threaded.asyncify.wasm",
+          "path": "vendor/onnxruntime/ort-wasm-simd-threaded.asyncify.wasm",
+          "sha256": "f33595b9f7ea51aa6f646dd5a2bde6fbb1c7bcde0b9d2b5f240011a09c1830d0"
         }
       ]
     },
@@ -107,8 +122,8 @@
         {
           "member": "package/dist/assets/worker-entry-C9UNuyOJ.js",
           "path": "vendor/paddleocr/whole-pipeline.mjs",
-          "recipe": "paddleocr-worker-adapter-v3",
-          "sha256": "6af8325fea24a757f48996d75b483c2503873527007a58e36e4a3d62eca40b88"
+          "recipe": "paddleocr-worker-adapter-v5",
+          "sha256": "f5362efed8e996d1275b16504c1e095e448fd8e67c9a62c90ef93548ea112602"
         }
       ]
     },
@@ -120,6 +135,28 @@
         {
           "path": "models/ppocrv5-det.tar",
           "sha256": "cd28389ed2c11dfe02d6a9847ec95ca6153a51bf38bc1c4e2521c1f548188f58"
+        }
+      ]
+    },
+    {
+      "url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_det_onnx_infer.tar",
+      "format": "raw",
+      "sha256": "781056046c9ed77a15c94681605db6a0f62317c2e9cce6931c71da2478d4bc30",
+      "files": [
+        {
+          "path": "models/ppocrv5-mobile-det.tar",
+          "sha256": "781056046c9ed77a15c94681605db6a0f62317c2e9cce6931c71da2478d4bc30"
+        }
+      ]
+    },
+    {
+      "url": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_rec_onnx_infer.tar",
+      "format": "raw",
+      "sha256": "f7e792bc836f36e7ef895ad47c426d75b0b75b1650caa6d63fe9418441ffba8c",
+      "files": [
+        {
+          "path": "models/ppocrv5-mobile-rec.tar",
+          "sha256": "f7e792bc836f36e7ef895ad47c426d75b0b75b1650caa6d63fe9418441ffba8c"
         }
       ]
     }

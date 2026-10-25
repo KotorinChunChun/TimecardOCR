@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = 'www/test/timecard-ocr/'
 APP_NAMES = (
     '.htaccess', 'THIRD_PARTY.md', 'index.html', 'style.css', 'sw.js',
-    'bootstrap.mjs', 'update.html', 'update.mjs', 'edit-history.mjs', 'casting.mjs', 'focus-tools.mjs', 'core.mjs', 'imaging.mjs',
+    'bootstrap.mjs', 'update.html', 'update.mjs', 'edit-history.mjs', 'casting.mjs', 'ocr-options.mjs', 'focus-tools.mjs', 'core.mjs', 'imaging.mjs',
     'ocr-prep.mjs', 'ocr-progress.mjs', 'color-tools.mjs', 'card-fields.mjs',
     'card-geometry.mjs', 'card-detector.mjs', 'card-range-editor.mjs',
     'image-tools.mjs', 'whole-engine.mjs', 'whole-result.mjs', 'engine-client.mjs', 'image-drop.mjs', 'ui-tools.mjs',
@@ -21,7 +21,7 @@ APP_NAMES = (
     'licenses/paddleocr.txt', 'licenses/opencv-js.txt', 'licenses/paddleocr-js-third-party.txt', 'licenses/rapidocr.txt', 'licenses/onnxruntime.txt',
     'licenses/onnxruntime-third-party.txt')
 TESTS = ('browser', 'points', 'workflow', 'ocr-prep', 'engine', 'drop', 'page', 'ui', 'whole',
-         'four-geometry', 'four-review', 'four-atlas', 'editor-refinement', 'casting')
+         'four-geometry', 'four-review', 'four-atlas', 'editor-refinement', 'casting', 'models')
 FILES = tuple(APP + name for name in APP_NAMES) + tuple(
     'scripts/test-timecard-' + name + '.mjs' for name in TESTS) + (
     'scripts/prepare-timecard-browser.py', 'scripts/prepare-timecard-whole.py', 'scripts/export-timecard-github.py',

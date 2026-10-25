@@ -22,7 +22,22 @@ def sdk_adapter(data):
     check(source.count(handler) == 1, '公式SDKの構造が変わりました。')
     ort_loader = 'Promise.resolve().then(function() {\n    return ort_bundle_min;\n  })'
     check(source.count(ort_loader) == 1, '公式SDKのORT読込部が変わりました。')
-    source = source.replace(ort_loader, "import('../onnxruntime/ort.wasm.min.mjs')")
+    source = source.replace(ort_loader, "backend === 'wasm' ? import('../onnxruntime/ort.wasm.min.mjs') : import('../onnxruntime/ort.webgpu.min.mjs')")
+    source = source.replace('async function loadOrtModule() {', 'async function loadOrtModule(backend) {')
+    source = source.replace('const ort = await loadOrtModule();', 'const ort = await loadOrtModule(backend);')
+    # ORT 1.24.3のNative WebGPUは同時セッション作成を許さない。
+    session_start = 'async function createSession(ort, modelBytes, providerCandidates) {'
+    check(source.count(session_start) == 1, 'SDKのセッション作成部が変わりました。')
+    source = source.replace(session_start, """let sessionCreation = Promise.resolve();
+async function createSession(...args) {
+  const previous = sessionCreation;
+  let finish;
+  sessionCreation = new Promise(resolve => { finish = resolve; });
+  await previous;
+  try { return await createSessionUnqueued(...args); }
+  finally { finish(); }
+}
+async function createSessionUnqueued(ort, modelBytes, providerCandidates) {""")
     # OpenCVの関数生成を通常のクロージャに置換し、unsafe-evalを要求しない。
     named_start = source.index('          function createNamedFunction(name, body) {')
     named_end = source.index('          function extendError(', named_start)

@@ -2,8 +2,10 @@ import {sha256Hex} from './core.mjs';
 import {observeOCRStages} from './ocr-progress.mjs';
 import {OcrPipelineRunner,sourcePayloadToMat} from './vendor/paddleocr/whole-pipeline.mjs';
 import {inferenceThreads} from './ocr-prep.mjs';
+import {ocrOptions,ocrProfile} from './ocr-options.mjs';
 
-export async function createWholeEngine(manifest,{threads,onStage=()=>{}}={}){
+export async function createWholeEngine(manifest,{threads,onStage=()=>{},options={profile:'accurate',device:'cpu'},allowCPUFallback=false}={}){
+  const settings=ocrOptions(options),profile=ocrProfile(settings.profile),backend=settings.device==='cpu'?'wasm':allowCPUFallback?'auto':'webgpu';
   const base=new URL('./',import.meta.url),threadCount=inferenceThreads(self.crossOriginIsolated,navigator.hardwareConcurrency,threads);
   const localFetch=async input=>{
     const url=new URL(String(input),base),entry=manifest.files.find(f=>new URL(f.path,base).href===url.href);
@@ -15,13 +17,14 @@ export async function createWholeEngine(manifest,{threads,onStage=()=>{}}={}){
   };
   const engine=new OcrPipelineRunner({
     sourceToMat:sourcePayloadToMat,fetch:localFetch,
-    ortOptions:{backend:'wasm',numThreads:threadCount,wasmPaths:new URL('./vendor/onnxruntime/',base).href},
+    ortOptions:{backend,numThreads:threadCount,wasmPaths:new URL('./vendor/onnxruntime/',base).href},
     pipelineConfig:{warnings:[],pipelineBatchSize:1,textDetectionBatchSize:1,textRecognitionBatchSize:1000,
-      modelSelection:{textDetectionModelName:'PP-OCRv5_server_det',textRecognitionModelName:'PP-OCRv5_server_rec'},
-      assets:{det:{url:new URL('models/ppocrv5-det.tar',base).href},rec:{url:new URL('models/ppocrv5-rec.tar',base).href}},
+      modelSelection:{textDetectionModelName:profile.det,textRecognitionModelName:profile.rec},
+      assets:{det:{url:new URL(profile.detPath,base).href},rec:{url:new URL(profile.recPath,base).href}},
       runtimeDefaults:{text_det_limit_side_len:1536,text_det_limit_type:'max',text_det_max_side_limit:1536,text_det_thresh:.2,text_det_box_thresh:.3,text_det_unclip_ratio:1.5,text_rec_score_thresh:0}}
   });
-  await engine.initialize();
+  try{await engine.initialize();}
+  catch(error){if(settings.device!=='cpu')throw Error('GPU構成の起動に失敗しました。実行をCPUに切り替えてください。 '+(error.message??String(error)));throw error;}
   // 実際のモデル呼出しを数える。SDKの内部バッチ数も含み、外側のAPI回数だけで判断しない。
   const originalRun=engine.ort.InferenceSession.prototype.run;let current,currentVariant='original';
   observeOCRStages(engine,onStage,()=>({variant:currentVariant}));
@@ -31,6 +34,7 @@ export async function createWholeEngine(manifest,{threads,onStage=()=>{}}={}){
   };
   return {
     threads:threadCount,
+    runtime:{profile:settings.profile,requestedDevice:allowCPUFallback?'auto':settings.device,det:engine.detModel.provider,rec:engine.recModel.provider},
     async recognize(image,{variant='original'}={}){
       const calls=[];current=calls;currentVariant=variant;
       try{

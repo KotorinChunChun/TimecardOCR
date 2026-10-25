@@ -10,7 +10,7 @@ test('一括は結合画像を渡し、旧Tesseractへの切替を残さない',
 });
 test('必須依存はPP-OCRv5だけとし、旧ページモデルを再取得しない',()=>{
   const manifest=JSON.parse(source('www/test/timecard-ocr/assets.json')),lock=JSON.parse(source('dev/history/v1.1.0/timecard-assets-lock.json'));
-  assert.deepEqual(manifest.files.filter(f=>f.path.endsWith('.tar')).map(f=>f.path).sort(),['models/ppocrv5-det.tar','models/ppocrv5-rec.tar']);assert.ok(manifest.files.every(f=>!/(?:tesseract|tessdata)/.test(f.path)));assert.ok(lock.sources.flatMap(g=>g.files).every(f=>!/(?:tesseract|tessdata)/.test(f.path)));
+  assert.deepEqual(manifest.files.filter(f=>f.path.endsWith('.tar')).map(f=>f.path).sort(),['models/ppocrv5-det.tar','models/ppocrv5-mobile-det.tar','models/ppocrv5-mobile-rec.tar','models/ppocrv5-rec.tar']);assert.ok(manifest.files.every(f=>!/(?:tesseract|tessdata)/.test(f.path)));assert.ok(lock.sources.flatMap(g=>g.files).every(f=>!/(?:tesseract|tessdata)/.test(f.path)));
 });
 class FakeWorker{
   messages=[];terminated=false;
@@ -41,4 +41,8 @@ test('送信時の例外も待機を残さず失敗として返す',async()=>{
 test('起動後の実行エラーは通知し、初期化済みの待機を再び止めない',async()=>{
   const worker=new FakeWorker(),errors=[],events=[],ready=initializeWorker(worker,{onError:e=>errors.push(e),onMessage:e=>events.push(e.data),timeoutMs:100});worker.emit({type:'ready'});await ready;
   worker.emit({type:'error',message:'領域不正'});worker.onerror({message:'実行失敗'});assert.equal(events[0].message,'領域不正');assert.match(errors[0].message,/実行失敗/);
+});
+
+test('モデルと実行方式を起動要求へ渡し、実際のproviderをreadyで受け取る',async()=>{
+ const worker=new FakeWorker(),options={profile:'light',device:'gpu'},ready=initializeWorker(worker,{initData:{options,allowCPUFallback:false},timeoutMs:100});assert.deepEqual(worker.messages[0],{type:'init',options,allowCPUFallback:false});worker.emit({type:'ready',runtime:{det:'webgpu',rec:'wasm'}});assert.equal((await ready).runtime.rec,'wasm');
 });

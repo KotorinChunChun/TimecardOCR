@@ -38,7 +38,7 @@ def verify(download=False):
                         target = APP / entry['path']
                         target.parent.mkdir(parents=True, exist_ok=True)
                         payload = archive.extractfile(entry['member']).read()
-                        if entry.get('recipe') == 'paddleocr-worker-adapter-v3':
+                        if entry.get('recipe') in {'paddleocr-worker-adapter-v3', 'paddleocr-worker-adapter-v4', 'paddleocr-worker-adapter-v5'}:
                             payload = whole['sdk_adapter'](payload)
                         target.write_bytes(payload)
             else:
