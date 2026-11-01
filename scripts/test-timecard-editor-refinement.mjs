@@ -41,7 +41,7 @@ test('指定アマノ定義はカードの4枠・表・行列・列別色除去�
   const raw=JSON.parse(readFileSync(new URL('../www/test/timecard-ocr/template-original.json',import.meta.url),'utf8')),t=parseDefinition(JSON.stringify(raw));
   assert.equal(t.name,'アマノタイムカード');assert.deepEqual(t.size,[1360,1680]);assert.equal(t.row_edges.length,18);assert.equal(t.columns.length,9);
   assert.deepEqual(t.card_layout.size,[680,1299]);assert.equal(t.card_layout.table_quad.length,4);assert.equal(t.card_coordinate_space,'card_image');assert.ok(t.card_fields.every(f=>f.box));
-  assert.deepEqual(t.columns[8].color_cleanup.fill,[254,253,233]);assert.deepEqual(t.header_columns,[0]);
+  assert.deepEqual(t.columns[8].color_cleanup.fill,[255,253,232]);assert.deepEqual(t.header_columns,[0]);
   for(const key of ['image','cells','stale_cells','card_information','source_sha256','calibration','card_calibration'])assert.equal(Object.hasOwn(raw,key),false);
   assert.ok(!JSON.stringify(raw).includes('data:image/'));
 });

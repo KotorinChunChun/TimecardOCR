@@ -1,12 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultCastType,defaultCastConfig,validateCastConfig,castValue,castCells,correctCast,castNeedsReview,approveCastCells,undoCastApproval,validateSavedCast,castTableRows,castEvidenceRows} from '../www/test/timecard-ocr/casting.mjs';
+import {readFileSync} from 'node:fs';
+import {defaultCastType,defaultCastConfig,validateCastConfig,castValue,castCells,correctCast,keepCastOriginal,castNeedsReview,approveCastCells,undoCastApproval,validateSavedCast,castTableRows,castEvidenceRows} from '../www/test/timecard-ocr/casting.mjs';
 import {polygonContains,hitPolygon,hitAtlas} from '../www/test/timecard-ocr/focus-tools.mjs';
 import {correctCell,validateTemplate} from '../www/test/timecard-ocr/core.mjs';
 import {mergeOCR} from '../www/test/timecard-ocr/workflow.mjs';
 const cfg=type=>defaultCastConfig(type),convert=(value,type)=>castValue(value,cfg(type));
 const template=()=>validateTemplate({name:'合成型変換',size:[200,200],row_edges:[0,100,200],row_padding:0,layout_version:2,header_rows:[0],columns:[{name:'arrival',kind:'time',x:[0,100],x1:0,x2:.5},{name:'subtotal',kind:'duration',x:[100,200],x1:.5,x2:1}]});
 const cell=(value='8:21',extra={})=>({id:'r02_arrival',row_index:2,column_index:0,column_name:'arrival',kind:'time',raw:value,value,confidence:.99,flags:[],history:[],source:undefined,bbox:[0,100,100,200],...extra});
+
+test('曖昧な時刻は原文のまま候補を提示して、無視設定でも要確認にする',()=>{
+  for(const [input,type,expected]of [['9:3','time',['09:03','09:30']],['8,30','time',['08:30']],['655','duration',['6:55']],['S:30','time_or_text',['05:30']],['B:05','time_or_text',['08:05']]]){
+    const result=castValue(input,{...cfg(type),on_error:'ignore'});assert.equal(result.status,'candidate',input);assert.equal(result.value,input);assert.equal(result.typed,null);assert.deepEqual(result.candidates,expected);assert.equal(castNeedsReview({cast:result}),true);
+  }
+  assert.deepEqual(convert('８，３０','time').candidates,['08:30']);assert.deepEqual(convert('9:0','time').candidates,['09:00']);
+  assert.deepEqual(convert('29:3','time').candidates,[]);assert.equal(convert('29:3','time').status,'error');
+  assert.deepEqual(convert('9:3','text').candidates,[]);assert.deepEqual(convert('655','integer').candidates,[]);
+  assert.equal(convert('8-30','time').status,'error');assert.equal(convert('8/30','time').status,'error');
+  assert.equal(convert('AM8:30','time').value,'08:30');assert.equal(convert('S:30 休憩','time_or_text').value,'S:30 休憩');
+});
+test('未選択の候補を一括承認せず、明示選択後の値は保存と再計算でも維持する',()=>{
+  const t=template(),uncertain=castCells([cell('9:3')],t,{at:'a'})[0];
+  assert.equal(uncertain.raw,'9:3');assert.equal(uncertain.value,'9:3');assert.equal(uncertain.cast.value,'9:3');assert.equal(uncertain.cast.status,'candidate');assert.deepEqual(uncertain.cast.candidates,['09:03','09:30']);
+  const none=approveCastCells([uncertain],[uncertain.id],{at:'b'});assert.equal(none.undo.length,0);assert.equal(castNeedsReview(none.cells[0]),true);
+  const still=correctCast(uncertain,'9:3',cfg('time'),{reviewed:true,at:'c'});assert.equal(still.cast.status,'candidate');assert.equal(still.cast.approved,false);assert.equal(castNeedsReview(still),true);
+  const chosen=correctCast(uncertain,'09:30',cfg('time'),{reviewed:true,reason:'候補を選択',at:'d'});assert.equal(chosen.raw,'9:3');assert.equal(chosen.value,'9:3');assert.equal(chosen.cast.value,'09:30');assert.equal(chosen.cast.typed,570);assert.equal(chosen.cast.approved,true);assert.equal(castNeedsReview(chosen),false);
+  const restored=JSON.parse(JSON.stringify(chosen));validateSavedCast(restored.cast);const recalculated=castCells([restored],t)[0];assert.equal(recalculated.cast.value,'09:30');assert.equal(recalculated.cast.approved,true);
+  assert.equal(castTableRows([uncertain],t)[1].at(-1),JSON.stringify({arrival:'candidate'}));const evidence=castEvidenceRows([uncertain]);assert.equal(evidence[0].at(-1),'cast_candidates');assert.equal(evidence[1].at(-1),JSON.stringify(['09:03','09:30']));
+});
+test('旧形式の承認・手修正を維持し、入力や設定が変われば新しい候補を生成する',()=>{
+  const t=template(),old=castCells([cell('9:03')],t,{at:'old'})[0];old.raw='9:3';old.value='9:3';old.cast.input_key=JSON.stringify(['9:3',null,false]);old.cast.approved=true;old.cast.approved_at='old';delete old.cast.candidates;
+  validateSavedCast(old.cast);const preserved=castCells([old],t)[0];assert.equal(preserved.cast.value,'09:03');assert.equal(preserved.cast.approved,true);assert.equal(preserved.cast.status,'converted');
+  const correctedOld=structuredClone(old);correctedOld.cast.approved=false;correctedOld.cast.approved_at=null;correctedOld.cast.manual_value='9:3';assert.equal(castCells([correctedOld],t)[0].cast.value,'09:03');assert.equal(castCells([correctedOld],t)[0].cast.manual_value,'9:3');
+  const changed={...old,value:'8,30'};assert.equal(castCells([changed],t)[0].cast.status,'candidate');
+  const pending=castCells([cell('9:3',{flags:['not_processed']})],t)[0];assert.equal(pending.cast.status,'pending');assert.equal(pending.cast.candidates.length,0);
+  const header=castCells([cell('9:3',{is_header_row:true})],t)[0];assert.equal(header.cast.status,'header');
+});
+test('メモだった候補は明示操作で元文字列を保持でき、保存復元後も勝手に時刻へ変換しない',()=>{
+  const t=template();t.columns[0].cast=cfg('time_or_text');const candidate=castCells([cell('S:30')],t,{at:'a'})[0];
+  const kept=keepCastOriginal(candidate,{at:'b'});assert.equal(kept.value,'S:30');assert.equal(kept.raw,'S:30');assert.equal(kept.cast.value,'S:30');assert.equal(kept.cast.status,'ignored');assert.equal(kept.cast.typed,null);assert.equal(kept.cast.kept_original,true);assert.equal(kept.cast.approved,false);assert.equal(kept.cast.approved_at,null);assert.equal(kept.cast.history.at(-1).reviewed,false);assert.equal(castNeedsReview(kept),false);
+  const restored=JSON.parse(JSON.stringify(kept));validateSavedCast(restored.cast);assert.deepEqual(castCells([restored],t)[0].cast,restored.cast);
+  for(const change of [{approved:true},{approved_at:'now'},{typed:123},{manual_value:'other'},{candidates:['05:30']}])assert.throws(()=>validateSavedCast({...restored.cast,...change}));
+  const corrected=correctCast(restored,'09:30',cfg('time_or_text'),{at:'c'});assert.equal(corrected.cast.kept_original,undefined);assert.equal(corrected.cast.value,'09:30');assert.equal(corrected.cast.typed,570);
+  assert.equal(castCells([{...restored,value:'B:05'}],t)[0].cast.status,'candidate');
+  const changed=structuredClone(t);changed.columns[0].cast={...cfg('time_or_text'),compact:false};assert.equal(castCells([restored],changed)[0].cast.status,'candidate');
+  const previous=castCells([cell('9:3')],t)[0],manual=correctCast(previous,'S:30',cfg('time_or_text')),manualKept=keepCastOriginal(manual);assert.equal(manualKept.cast.input_value,'9:3');assert.equal(manualKept.cast.value,'S:30');validateSavedCast(manualKept.cast);assert.equal(castCells([manualKept],t)[0].cast.value,'S:30');
+  assert.throws(()=>keepCastOriginal(corrected));
+});
+test('候補の保存データを制限し、既存の候補なしJSONを許容する',()=>{
+  const valid=castCells([cell('8,30')],template())[0].cast;validateSavedCast(JSON.parse(JSON.stringify(valid)));
+  assert.throws(()=>validateSavedCast({...valid,candidates:[]}));assert.throws(()=>validateSavedCast({...valid,candidates:['a','b','c']}));assert.throws(()=>validateSavedCast({...valid,candidates:[{}]}));assert.throws(()=>validateSavedCast({...valid,type:'day'}));
+  assert.throws(()=>validateSavedCast({...valid,approved:true}));assert.throws(()=>validateSavedCast({...valid,approved_at:'now'}));assert.throws(()=>validateSavedCast({...valid,typed:123}));
+  const legacy=castCells([cell('8:21')],template())[0].cast;delete legacy.candidates;validateSavedCast(legacy);
+});
 
 test('アマノの列とカード情報へ安全な既定型を割り当てる',()=>{
   for(const [target,type]of [[{name:'day'},'day'],[{name:'arrival_stamp'},'day'],[{name:'departure_stamp'},'day'],[{name:'interim_out'},'time_or_text'],[{kind:'time'},'time'],[{kind:'duration'},'duration'],[{key:'number'},'code'],[{key:'year_month'},'year_month'],[{key:'name'},'text']])assert.equal(defaultCastType(target),type);
@@ -16,6 +62,22 @@ test('時刻・時間数だけで区切りと数字の類似文字を補正す�
   assert.equal(convert('6=55','duration').value,'6:55');assert.equal(convert('6.55','duration').typed,415);assert.equal(convert('825','time').value,'08:25');
   assert.equal(convert('6.55','number').typed,6.55);assert.equal(convert('B1','code').value,'B1');assert.equal(convert('派遣8','text').value,'派遣8');
   assert.equal(convert('AM8:21','time').value,'08:21');assert.equal(convert('5:08PM','time').value,'17:08');assert.equal(convert('午後5時08分','time').value,'17:08');
+});
+test('アマノの時刻系列は小文字iを1へ変換し、原文・メモ・独自設定は保持する',()=>{
+  const amanotemplate=validateTemplate(JSON.parse(readFileSync(new URL('../www/test/timecard-ocr/template-original.json',import.meta.url),'utf8')));
+  for(const column of amanotemplate.columns){
+    const isClock=['time','duration'].includes(column.kind),found=column.cast?.replacements?.some(([from,to])=>from==='i'&&to==='1')??false;
+    assert.equal(found,isClock,column.name);
+    if(!isClock)continue;
+    const source=cell('i7:O8',{id:`test_${column.name}`,column_name:column.name,kind:column.kind});
+    const result=castCells([source],amanotemplate)[0];
+    assert.equal(result.cast.value,'17:08',column.name);
+    assert.equal(result.raw,'i7:O8');assert.equal(result.value,'i7:O8');
+  }
+  for(const type of ['time','extended_time','duration','time_or_text'])assert.ok(cfg(type).replacements.some(([from,to])=>from==='i'&&to==='1'),type);
+  for(const type of ['day','integer','number','text','code'])assert.ok(!cfg(type).replacements.some(([from])=>from==='i'),type);
+  assert.equal(convert('finish','time_or_text').value,'finish');assert.equal(convert('外出メモ','time_or_text').value,'外出メモ');
+  const old={...cfg('time'),replacements:[['l','1']]};assert.deepEqual(validateCastConfig(old).replacements,[['l','1']]);assert.equal(castValue('i7:08',old).status,'error');
 });
 test('時刻と経過時間の上限を分け、日と年月日を推測しない',()=>{
   assert.equal(convert('25:30','time').status,'error');assert.equal(convert('25:30','extended_time').typed,1530);assert.equal(convert('125:30','duration').typed,7530);

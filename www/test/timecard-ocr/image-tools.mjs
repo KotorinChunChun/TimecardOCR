@@ -1,5 +1,6 @@
 import {canvas,crop,prepareCrop} from './imaging.mjs';
-import {rgbToHSV,hsvToRGB,hueMatches,colorHistogram,removeSelectedColor,validateColorCleanup,histogramSelection} from './color-tools.mjs';
+import {rgbToHSV,hsvToRGB,hueMatches,colorHistogram,validateColorCleanup,histogramSelection,VERTICAL_LINE_DEFAULTS} from './color-tools.mjs';
+import {applyColorCleanup} from './line-tools.mjs';
 import {CARD_FIELDS,cardFieldLabel,validateCardFields} from './card-fields.mjs';
 
 const bound=(v,min=0,max=1)=>Math.max(min,Math.min(max,v));
@@ -16,14 +17,22 @@ function drawBox(ctx,box,w,h,label,color='#d66c08'){
 function dialog(id,title,content){const d=document.createElement('dialog');d.id=id;d.className='image-tools-dialog';d.setAttribute('aria-label',title);d.innerHTML=`<div class="image-tools-head"><h2>${title}</h2><button type="button" data-close class="secondary">閉じる</button></div>${content}<p class="tool-error" role="status" data-error></p>`;document.body.append(d);d.querySelector('[data-close]').onclick=()=>d.close();return d;}
 
 export function createImageTools({onColorSave,onCardSave}){
-  const color=dialog('color-dialog','列の色を除去',`
+  const color=dialog('color-dialog','列の色・縦線を除去',`
     <div class="tool-sample"><strong data-column></strong><label>プレビューするセル<select id="color-sample-cell"></select></label></div>
+    <label class="check"><input id="color-vertical-only" type="checkbox" title="指定した色と範囲のうち、直線の芯と判定した画素だけを除去します。初めてONにすると検証済みのHSV条件を設定します。">縦線だけを除去</label>
+    <details id="vertical-line-settings"><summary>縦線の検出設定</summary><div class="form-grid">
+      <label>最小高さ px<input data-line="minHeight" type="number" min="2" max="10000" step="1"></label>
+      <label title="直線の芯の周囲で測った幅の中央値。接続した文字全体の幅ではありません。">最大幅 px<input data-line="maxWidth" type="number" min="1" max="100" step="1"></label>
+      <label>横罫線の連続長 px<input data-line="horizontal" type="number" min="2" max="10000" step="1"></label>
+      <label>直線の許容ずれ px<input data-line="deviation" type="number" min="0.1" max="1.5" step="0.05"></label>
+      <label>傾き上限 °<input data-line="maxTilt" type="number" min="0" max="5" step="0.5"></label>
+    </div></details>
     <div class="color-operations" role="group" aria-label="色除去の操作">
       <div class="color-operation-row"><button type="button" data-mode="pick" class="secondary"><span data-eyedropper aria-hidden="true"></span>除去色を拾う</button><span data-swatch class="color-swatch" aria-label="拾った除去色"></span><span data-picked>除去色は未取得</span></div>
       <div class="color-operation-row"><button type="button" data-mode="region" class="secondary"><span class="region-icon" aria-hidden="true">▱</span>除去範囲を囲う</button><span class="roi-legend"><span aria-hidden="true">▱</span>橙枠の内側に適用</span><div class="tool-coordinates" data-roi><span>セル内 %</span><label>X1<input data-box="0" type="number" min="0" max="100" step="0.1"></label><label>Y1<input data-box="1" type="number" min="0" max="100" step="0.1"></label><label>X2<input data-box="2" type="number" min="0" max="100" step="0.1"></label><label>Y2<input data-box="3" type="number" min="0" max="100" step="0.1"></label></div></div>
       <div class="color-operation-row"><button type="button" data-mode="fill" class="secondary"><span data-eyedropper aria-hidden="true"></span>背景色を拾う</button><label class="fill-color-control">拾った背景色・置換色<input id="color-fill" type="color" value="#ffffff" aria-label="背景色・置換色"></label><span data-fill-picked></span></div>
     </div><p data-mode-hint class="small muted" role="status"></p>
-    <div class="image-tool-columns"><section><h3>原画像 · クリックでスポイト／ドラッグで囲む</h3><div class="tool-image-scroll"><canvas id="color-source" aria-label="色を拾うセル画像"></canvas></div></section><section><h3>色除去後のプレビュー</h3><div class="tool-image-scroll"><canvas id="color-preview" aria-label="色除去後のセル画像"></canvas></div></section></div>
+    <div class="image-tool-columns"><section><h3>原画像 · クリックでスポイト／ドラッグで囲む</h3><div class="tool-image-scroll"><canvas id="color-source" aria-label="色を拾うセル画像"></canvas></div></section><section><h3>処理後のプレビュー</h3><div class="tool-image-scroll"><canvas id="color-preview" aria-label="色・縦線除去後のセル画像"></canvas></div></section></div>
     <h3>除去色の詳細設定 · グラフをドラッグして範囲を選択</h3>
     <div class="color-ranges">
       <section><h3>色相 H（灰色以外の分布）</h3><canvas data-hist="hue" width="360" height="70" aria-label="色相の分布。ドラッグで範囲を選択"></canvas><label>下限<input data-range="hue" data-side="0" type="number" min="0" max="360" step="1"></label><label>上限<input data-range="hue" data-side="1" type="number" min="0" max="360" step="1"></label></section>
@@ -37,7 +46,7 @@ export function createImageTools({onColorSave,onCardSave}){
   function swatches(){const picked=settings.picked_rgb;q('[data-swatch]').style.backgroundColor=picked?hex(picked):'transparent';q('[data-picked]').textContent=picked?'RGB '+picked.join(', '):'除去色は未取得（HSV範囲で指定）';q('[data-fill-picked]').textContent='RGB '+settings.fill.join(', ');q('#color-fill').value=hex(settings.fill);}
   const error=e=>q('[data-error]').textContent=e?.message??String(e??'');
   function coordinates(){q('[data-roi]').querySelectorAll('input').forEach(e=>e.value=(settings.roi[Number(e.dataset.box)]*100).toFixed(2));}
-  function controls(){coordinates();swatches();color.querySelectorAll('[data-range]').forEach(e=>e.value=settings[e.dataset.range][Number(e.dataset.side)]);}
+  function controls(){coordinates();swatches();color.querySelectorAll('[data-range]').forEach(e=>e.value=settings[e.dataset.range][Number(e.dataset.side)]);q('#color-vertical-only').checked=!!settings.vertical_line&&settings.vertical_line.enabled!==false;color.querySelectorAll('[data-line]').forEach(e=>{e.value=(settings.vertical_line??VERTICAL_LINE_DEFAULTS)[e.dataset.line];e.disabled=!q('#color-vertical-only').checked;});}
   function histograms(image){
     const bins=colorHistogram(image,settings.roi);
     ['hue','saturation','value'].forEach((key,k)=>{
@@ -50,7 +59,7 @@ export function createImageTools({onColorSave,onCardSave}){
   function marker(ctx,p,paint){if(!p)return;const x=p[0]*raw.width,y=p[1]*raw.height;ctx.lineWidth=Math.max(2,raw.width/180);ctx.strokeStyle='white';ctx.beginPath();ctx.arc(x,y,Math.max(4,raw.width/40),0,Math.PI*2);ctx.stroke();ctx.strokeStyle=paint;ctx.beginPath();ctx.arc(x,y,Math.max(6,raw.width/30),0,Math.PI*2);ctx.stroke();}
   function renderColor(){
     if(!raw)return;
-    try{validateColorCleanup(settings);const image=raw.getContext('2d').getImageData(0,0,raw.width,raw.height);showCanvas(source,raw);drawBox(source.getContext('2d'),settings.roi,raw.width,raw.height);marker(source.getContext('2d'),pickPoint,'#ad4278');marker(source.getContext('2d'),fillPoint,'#087883');histograms(image);preview.width=raw.width;preview.height=raw.height;preview.getContext('2d').putImageData(removeSelectedColor(image,settings),0,0);drawBox(preview.getContext('2d'),settings.roi,raw.width,raw.height);swatches();error('');}catch(e){error(e);}
+    try{validateColorCleanup(settings);const image=raw.getContext('2d').getImageData(0,0,raw.width,raw.height);showCanvas(source,raw);drawBox(source.getContext('2d'),settings.roi,raw.width,raw.height);marker(source.getContext('2d'),pickPoint,'#ad4278');marker(source.getContext('2d'),fillPoint,'#087883');histograms(image);preview.width=raw.width;preview.height=raw.height;preview.getContext('2d').putImageData(applyColorCleanup(image,settings),0,0);drawBox(preview.getContext('2d'),settings.roi,raw.width,raw.height);swatches();error('');}catch(e){error(e);}
   }
   function schedule(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;renderColor();});}
   function setSample(){const cell=colorContext.cells.find(c=>c.id===q('#color-sample-cell').value);if(!cell)return;if(raw)raw.width=raw.height=1;raw=crop(colorContext.source,cell.bbox);pickPoint=fillPoint=null;renderColor();}
@@ -68,6 +77,8 @@ export function createImageTools({onColorSave,onCardSave}){
   q('#color-sample-cell').onchange=setSample;
   color.querySelectorAll('[data-box]').forEach(e=>e.oninput=()=>{settings.roi[Number(e.dataset.box)]=Number(e.value)/100;schedule();});
   color.querySelectorAll('[data-range]').forEach(e=>e.oninput=()=>{settings[e.dataset.range][Number(e.dataset.side)]=Number(e.value);schedule();});
+  q('#color-vertical-only').onchange=()=>{if(!settings.vertical_line){settings.vertical_line={...VERTICAL_LINE_DEFAULTS,enabled:true};settings.hue=[0,360];settings.saturation=[0,100];settings.value=[0,85];delete settings.picked_rgb;}settings.vertical_line.enabled=q('#color-vertical-only').checked;controls();schedule();};
+  color.querySelectorAll('[data-line]').forEach(e=>e.oninput=()=>{settings.vertical_line??={...VERTICAL_LINE_DEFAULTS,enabled:false};settings.vertical_line[e.dataset.line]=e.valueAsNumber;schedule();});
   function updateHistogram(event){if(!histDrag||histDrag.id!==event.pointerId)return;const target=histDrag.target;settings[histDrag.key]=histogramSelection(histDrag.start,position(event,target)[0],histDrag.key);controls();schedule();}
   function finishHistogram(event,cancel=false){if(!histDrag||event.pointerId!==undefined&&histDrag.id!==event.pointerId)return;const d=histDrag;if(cancel)settings[d.key]=d.before;else if(Number.isFinite(event.clientX))updateHistogram(event);histDrag=null;if(d.target.hasPointerCapture(d.id))d.target.releasePointerCapture(d.id);controls();renderColor();}
   color.querySelectorAll('[data-hist]').forEach(target=>{
@@ -102,7 +113,7 @@ export function createImageTools({onColorSave,onCardSave}){
   cq('#card-apply').onclick=async()=>{try{if(await onCardSave(validateCardFields(draft),[cardContext.source.width,cardContext.source.height])!==false)card.close();}catch(e){cq('[data-error]').textContent=e.message;}};
   card.addEventListener('close',()=>{cardSource.width=cardSource.height=cardCrop.width=cardCrop.height=1;cardContext=null;draft=[];cardDrag=null;});
   return {
-    openColor(context){if(!context.source||!context.cells.length)throw Error('③で列とプレビューするセルを選んでください。');colorContext=context;settings=structuredClone(context.column.color_cleanup??{enabled:true,roi:[0,0,1,1],hue:[180,260],saturation:[20,100],value:[0,100],fill:[255,255,255]});settings.enabled=true;setMode('pick');q('[data-column]').textContent=context.label;const select=q('#color-sample-cell');select.replaceChildren(...context.cells.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=context.cellLabel(c);return o;}));select.value=context.selected??context.cells.find(c=>!c.is_header_row)?.id??context.cells[0].id;controls();setSample();color.showModal();},
+    openColor(context){if(!context.source||!context.cells.length)throw Error('③で列とプレビューするセルを選んでください。');colorContext=context;settings=structuredClone(context.column.color_cleanup??{enabled:true,roi:[0,0,1,1],hue:[180,260],saturation:[20,100],value:[0,100],fill:[255,255,255]});settings.enabled=true;setMode(settings.vertical_line?.enabled!==false&&settings.vertical_line?'region':'pick');q('#vertical-line-settings').open=!!settings.vertical_line&&settings.vertical_line.enabled!==false;q('[data-column]').textContent=context.label;const select=q('#color-sample-cell');select.replaceChildren(...context.cells.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=context.cellLabel(c);return o;}));select.value=context.selected??context.cells.find(c=>!c.is_header_row)?.id??context.cells[0].id;controls();setSample();color.showModal();},
     openCard(context){if(!context.source)throw Error('先に画像を選んでください。');cardContext=context;draft=validateCardFields(context.template.card_fields);const legacy=context.template.extra_regions?.find(r=>r.id==='card_id'&&r.source==='original_image'),number=draft.find(f=>f.key==='number');if(!number.box&&legacy&&legacy.bbox[2]<=context.source.width&&legacy.bbox[3]<=context.source.height)number.box=legacy.bbox.map((v,i)=>v/(i%2?context.source.height:context.source.width));const select=cq('#card-field');select.replaceChildren(...CARD_FIELDS.map(f=>{const o=document.createElement('option');o.value=f.key;o.textContent=f.label;return o;}));cardControls();renderCard();card.showModal();}
   };
 }

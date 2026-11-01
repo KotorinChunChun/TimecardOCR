@@ -81,26 +81,30 @@ export function createCardRangeEditor(target,{read,change,select}){
       if(label||hit){key=label?.key??hit.key;select(key);if(!hit?.box||!p.inside){consume(event);draw();return;}type='move';}
       else if(!p.inside)return;
     }
+    // 定義済みの枠は、空いた場所を押しても作り直さない。
+    if(type==='new'&&selected?.box){consume(event);draw();return;}
     if(!CARD_FIELDS.some(field=>field.key===key))return;
     consume(event);target.focus({preventScroll:true});
     const snapshot=copy(s.fields),field=snapshot.find(field=>field.key===key);
     if(!field)return;
-    drag={id:event.pointerId,key,type,sides,box:pixelBox(field,s.image),point:[clamp(p.point[0],0,s.image.width),clamp(p.point[1],0,s.image.height)],size:[s.image.width,s.image.height],snapshot,current:snapshot,changed:false};
+    drag={id:event.pointerId,key,type,sides,box:pixelBox(field,s.image),point:[clamp(p.point[0],0,s.image.width),clamp(p.point[1],0,s.image.height)],client:[event.clientX,event.clientY],started:false,size:[s.image.width,s.image.height],snapshot,current:snapshot,changed:false};
     target.setPointerCapture(event.pointerId);target.classList.add('dragging');draw();
   });
   target.addEventListener('pointermove',event=>{
     const s=read();if(!s.active||!drag||drag.id!==event.pointerId||!s.image)return;
     consume(event);const p=position(event,s);if(!p)return;
+    if(!drag.started&&Math.hypot(event.clientX-drag.client[0],event.clientY-drag.client[1])<4)return;
+    drag.started=true;
     const fields=resized(drag,p.point);if(same(fields,drag.current))return;
     drag.current=copy(fields);drag.changed=!same(fields,drag.snapshot);change(copy(fields),{drag:true,cancel:false});
   });
   function finish(event,cancel=false){
     const s=read();if(!s.active||!drag||event.pointerId!==undefined&&drag.id!==event.pointerId)return;
     consume(event);const d=drag;drag=null;
-    if(!cancel&&s.image&&Number.isFinite(event.clientX)&&Number.isFinite(event.clientY)){
+    if(!cancel&&s.image&&Number.isFinite(event.clientX)&&Number.isFinite(event.clientY)&&(d.started||Math.hypot(event.clientX-d.client[0],event.clientY-d.client[1])>=4)){
       const p=position(event,s);if(p){d.current=resized(d,p.point);d.changed=!same(d.current,d.snapshot);}
     }
-    if(cancel)change(copy(d.snapshot),{drag:false,cancel:true});
+    if((cancel&&d.changed)||(!d.changed&&d.started))change(copy(d.snapshot),{drag:false,cancel:true});
     else if(d.changed)change(copy(d.current),{drag:false,cancel:false});
     target.classList.remove('dragging');if(target.hasPointerCapture(d.id))target.releasePointerCapture(d.id);draw();
   }

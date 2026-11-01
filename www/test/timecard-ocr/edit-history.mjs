@@ -15,6 +15,11 @@ export function createEditHistory(limit=40){
     },
     undo(){if(cursor<=0)return null;lastGroup='';return copy(entries[--cursor]);},
     redo(){if(cursor>=entries.length-1)return null;lastGroup='';return copy(entries[++cursor]);},
+    capture(){return copy({entries,cursor,lastGroup,lastAt});},
+    restore(value){
+      if(!value||!Array.isArray(value.entries)||!Number.isInteger(value.cursor)||(value.entries.length===0?value.cursor!==-1:value.cursor<0||value.cursor>=value.entries.length))throw Error('編集履歴が不正です。');
+      ({entries,cursor,lastGroup,lastAt}=copy(value));lastGroup='';lastAt=0;
+    },
     get canUndo(){return cursor>0;},get canRedo(){return cursor>=0&&cursor<entries.length-1;}
   };
 }

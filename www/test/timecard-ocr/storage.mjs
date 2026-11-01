@@ -12,6 +12,7 @@ export async function sqliteBytes(cells,metadata){
       CREATE TABLE approvals(cell_id TEXT PRIMARY KEY,approved INTEGER NOT NULL,approved_at TEXT);
       CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT);
       CREATE TABLE cast_results(cell_id TEXT PRIMARY KEY,input_value TEXT,cast_type TEXT,cast_value TEXT,typed_json TEXT,status TEXT,error TEXT,approved INTEGER,approved_at TEXT,config_json TEXT,stale INTEGER);
+      CREATE TABLE cast_candidates(cell_id TEXT,sequence INTEGER,value TEXT,PRIMARY KEY(cell_id,sequence));
       CREATE TABLE cast_history(cell_id TEXT,sequence INTEGER,event TEXT,created_at TEXT,old_value TEXT,new_value TEXT,reason TEXT,details TEXT,PRIMARY KEY(cell_id,sequence));
       CREATE TABLE detections(id INTEGER PRIMARY KEY,raw_text TEXT,confidence REAL,normalized_polygon TEXT,original_polygon TEXT,matched_cell_ids TEXT);`);
     for(const c of cells){
@@ -20,7 +21,7 @@ export async function sqliteBytes(cells,metadata){
       db.run('INSERT INTO approvals VALUES(?,?,?)',[c.id,approval.approved?1:0,approval.approved_at??null]);
       db.run('INSERT INTO variants VALUES(?,?,?,?)',[c.id,'original',c.raw,c.confidence]);
       if(c.filtered!==null)db.run('INSERT INTO variants VALUES(?,?,?,?)',[c.id,'blue_filtered',c.filtered,c.filteredConfidence??null]);
-      if(c.cast){const result=c.cast;db.run('INSERT INTO cast_results VALUES(?,?,?,?,?,?,?,?,?,?,?)',[c.id,result.input_value,result.type,result.value,JSON.stringify(result.typed),result.status,result.error,result.approved?1:0,result.approved_at??null,result.config_key,result.stale?1:0]);for(const [index,h]of result.history.entries())db.run('INSERT INTO cast_history VALUES(?,?,?,?,?,?,?,?)',[c.id,index,h.event??'cast',h.at,h.old_value,h.new_value,h.reason,JSON.stringify(h)]);}
+      if(c.cast){const result=c.cast;db.run('INSERT INTO cast_results VALUES(?,?,?,?,?,?,?,?,?,?,?)',[c.id,result.input_value,result.type,result.value,JSON.stringify(result.typed),result.status,result.error,result.approved?1:0,result.approved_at??null,result.config_key,result.stale?1:0]);for(const [index,value]of (result.candidates??[]).entries())db.run('INSERT INTO cast_candidates VALUES(?,?,?)',[c.id,index,value]);for(const [index,h]of result.history.entries())db.run('INSERT INTO cast_history VALUES(?,?,?,?,?,?,?,?)',[c.id,index,h.event??'cast',h.at,h.old_value,h.new_value,h.reason,JSON.stringify(h)]);}
       for(const h of c.history??[])db.run('INSERT INTO corrections(cell_id,old_value,new_value,reason,created_at,event,details) VALUES(?,?,?,?,?,?,?)',[c.id,h.old_value??'',h.new_value??'',h.reason??'',h.at??'',h.event??'correction',JSON.stringify(h)]);
     }
     for(const [key,value]of Object.entries({...metadata,version:VERSION,application:'timecard-ocr-browser',image_storage:'not_embedded',detection:'template_regions_only'}))db.run('INSERT INTO metadata VALUES(?,?)',[key,JSON.stringify(value)]);

@@ -7,10 +7,18 @@ export function hsvToRGB(h,s=100,v=100){
   s/=100;v/=100;const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,i=Math.floor(((h%360)+360)%360/60),rgb=[[c,x,0],[x,c,0],[0,c,x],[0,x,c],[x,0,c],[c,0,x]][i];return rgb.map(n=>Math.round((n+m)*255));
 }
 export const hueMatches=(h,[low,high])=>low<=high?h>=low&&h<=high:h>=low||h<=high;
+export const VERTICAL_LINE_DEFAULTS=Object.freeze({minHeight:25,maxWidth:4,horizontal:16,deviation:.55,maxTilt:2});
 export function validateColorCleanup(value){
   if(value==null)return null;const s=JSON.parse(JSON.stringify(value)),range=(v,max)=>Array.isArray(v)&&v.length===2&&v.every(n=>Number.isFinite(n)&&n>=0&&n<=max);
   if(!Array.isArray(s.roi)||s.roi.length!==4||!s.roi.every(n=>Number.isFinite(n)&&n>=0&&n<=1)||s.roi[0]>=s.roi[2]||s.roi[1]>=s.roi[3]||!range(s.hue,360)||!range(s.saturation,100)||s.saturation[0]>s.saturation[1]||!range(s.value,100)||s.value[0]>s.value[1]||!Array.isArray(s.fill)||s.fill.length!==3||!s.fill.every(n=>Number.isInteger(n)&&n>=0&&n<=255))throw Error('色除去の範囲・HSV・置換色が不正です。');
   if(s.picked_rgb!==undefined&&(!Array.isArray(s.picked_rgb)||s.picked_rgb.length!==3||!s.picked_rgb.every(n=>Number.isInteger(n)&&n>=0&&n<=255)))throw Error('拾った除去色が不正です。');
+  if(s.vertical_line!==undefined){
+    const v=s.vertical_line;if(!v||typeof v!=='object'||Array.isArray(v)||v.enabled!==undefined&&typeof v.enabled!=='boolean')throw Error('縦線除去の設定が不正です。');
+    s.vertical_line={...VERTICAL_LINE_DEFAULTS,...v,enabled:v.enabled!==false};
+    for(const [key,min,max,integer]of [['minHeight',2,10000,true],['maxWidth',1,100,true],['horizontal',2,10000,true],['deviation',.1,1.5,false],['maxTilt',0,5,false]]){
+      const n=s.vertical_line[key];if(!Number.isFinite(n)||n<min||n>max||integer&&!Number.isInteger(n))throw Error('縦線除去の高さ・幅・直線性が不正です。');
+    }
+  }
   s.enabled=s.enabled!==false;return s;
 }
 export function roiPixels(roi,width,height){return [Math.floor(roi[0]*width),Math.floor(roi[1]*height),Math.min(width,Math.ceil(roi[2]*width)),Math.min(height,Math.ceil(roi[3]*height))];}

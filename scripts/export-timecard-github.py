@@ -3,16 +3,18 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'www/test/timecard-ocr/'
 APP_NAMES = (
     '.htaccess', 'THIRD_PARTY.md', 'index.html', 'style.css', 'sw.js',
     'bootstrap.mjs', 'update.html', 'update.mjs', 'edit-history.mjs', 'casting.mjs', 'ocr-options.mjs', 'focus-tools.mjs', 'core.mjs', 'imaging.mjs',
-    'ocr-prep.mjs', 'ocr-progress.mjs', 'color-tools.mjs', 'card-fields.mjs',
-    'card-geometry.mjs', 'card-detector.mjs', 'card-range-editor.mjs',
+    'ocr-prep.mjs', 'ocr-progress.mjs', 'color-tools.mjs', 'line-tools.mjs', 'card-fields.mjs',
+    'card-geometry.mjs', 'card-detector.mjs', 'card-range-editor.mjs', 'card-queue.mjs', 'card-work.mjs',
     'image-tools.mjs', 'whole-engine.mjs', 'whole-result.mjs', 'engine-client.mjs', 'image-drop.mjs', 'ui-tools.mjs',
     'point-tools.mjs', 'table-detector.mjs', 'workflow.mjs', 'grid-editor.mjs',
     'grid-autoplacement.mjs', 'review-tools.mjs',
@@ -21,7 +23,7 @@ APP_NAMES = (
     'licenses/paddleocr.txt', 'licenses/opencv-js.txt', 'licenses/paddleocr-js-third-party.txt', 'licenses/rapidocr.txt', 'licenses/onnxruntime.txt',
     'licenses/onnxruntime-third-party.txt')
 TESTS = ('browser', 'points', 'workflow', 'ocr-prep', 'engine', 'drop', 'page', 'ui', 'whole',
-         'four-geometry', 'four-review', 'four-atlas', 'editor-refinement', 'casting', 'models')
+         'four-geometry', 'four-review', 'four-atlas', 'editor-refinement', 'casting', 'models', 'card-range', 'vertical-lines', 'card-queue', 'card-work', 'candidate-storage')
 FILES = tuple(APP + name for name in APP_NAMES) + tuple(
     'scripts/test-timecard-' + name + '.mjs' for name in TESTS) + (
     'scripts/prepare-timecard-browser.py', 'scripts/prepare-timecard-whole.py', 'scripts/export-timecard-github.py',
@@ -58,6 +60,23 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def package_document(text, *, root=False):
+    # 版別報告書は公開パッケージに含めず、リンクラベルは説明文として残す。
+    text = re.sub(r'\[([^\]\n]+)\]\(\.\./dev/history/[^)\n]+\)', r'\1', text)
+    return text.replace('(../www/', '(www/') if root else text
+
+
+def verify_document_links(target, relative):
+    document = target / relative
+    for href in re.findall(r'(?<!!)\[[^\]\n]+\]\(([^)\n]+)\)', document.read_text(encoding='utf-8')):
+        parsed = urlsplit(href)
+        if parsed.scheme or parsed.netloc or not parsed.path:
+            continue
+        resolved = (document.parent / unquote(parsed.path)).resolve()
+        check(resolved.is_relative_to(target.resolve()) and resolved.is_file(),
+              f'文書リンク先がパッケージ内にありません: {relative} -> {href}')
+
+
 def verify(target):
     manifest = json.loads((target / 'export-manifest.json').read_text(encoding='utf-8'))
     expected = set(FILES) | {'README.md', '.gitignore', '.gitattributes'}
@@ -71,7 +90,10 @@ def verify(target):
         check(Path(relative).suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.csv', '.db', '.sqlite', '.onnx', '.tar'}, '画像・結果・モデルは含めません: ' + relative)
         path = target / relative
         check(path.is_file() and digest(path) == entry['sha256'], 'SHA-256不一致: ' + relative)
+    for document in ('README.md', 'docs/timecard-ocr-repository.md'):
+        verify_document_links(target, document)
     print(f"固定ソース {len(expected)}件のSHA-256、実画像・結果・ログの除外: 合格")
+    print('README・操作資料の相対リンク: 合格')
 
 
 def export(target):
@@ -83,7 +105,8 @@ def export(target):
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, dest)
     readme = (ROOT / 'docs/timecard-ocr-repository.md').read_text(encoding='utf-8')
-    (target / 'README.md').write_text(readme.replace('(../www/', '(www/'), encoding='utf-8')
+    (target / 'README.md').write_text(package_document(readme, root=True), encoding='utf-8')
+    (target / 'docs/timecard-ocr-repository.md').write_text(package_document(readme), encoding='utf-8')
     (target / '.gitignore').write_text(IGNORE, encoding='utf-8')
     (target / '.gitattributes').write_text('* -text\n', encoding='utf-8')
     revision = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()

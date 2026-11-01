@@ -1,5 +1,16 @@
 export function reviewSnapshot(id,value,reason,reviewed){return {id,value:String(value??'').replace(/\r\n?/g,'\n'),reason:String(reason??'').trim(),reviewed:!!reviewed};}
 export function reviewChanged(baseline,current){return !!baseline&&JSON.stringify(baseline)!==JSON.stringify(current);}
+export function matchesReasonFilter(found,{onlyFlagged=false,reasons=[]}={}){
+  return (!onlyFlagged||found.length>0)&&(!reasons.length||reasons.some(reason=>found.includes(reason)));
+}
+export function clickInside(event,element){
+  const path=event.composedPath?.();
+  return path?.length?path.includes(element):element.contains(event.target);
+}
+export function replacementTableText(rules){
+  const quote=value=>{const text=String(value);return /[\t\r\n"]/.test(text)?'"'+text.replaceAll('"','""')+'"':text;};
+  return [['変換前','変換後'],...rules].map(row=>row.map(quote).join('\t')).join('\r\n');
+}
 export function pageConfirmation(dialog){
   let pending=null;
   dialog.addEventListener('close',()=>{const resolve=pending;pending=null;resolve?.(dialog.returnValue==='discard');});

@@ -1,4 +1,4 @@
-import {removeSelectedColor} from './color-tools.mjs';
+import {applyColorCleanup} from './line-tools.mjs';
 import {mapPoint,sha256Hex} from './core.mjs';
 import {perimeterColor,preparedSize,recognitionSize} from './ocr-prep.mjs';
 export function canvas(w,h){const c=typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(w,h):Object.assign(document.createElement('canvas'),{width:w,height:h});return c;}
@@ -30,7 +30,7 @@ export function crop(source,box,direction='horizontal',cleanup=null){
   const [x,y,right,bottom]=box,w=right-x,h=bottom-y;
   if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
   let input=source,left=x,topY=y;
-  if(cleanup?.enabled!==false&&cleanup){input=canvas(w,h);const context=input.getContext('2d');context.drawImage(source,x,y,w,h,0,0,w,h);context.putImageData(removeSelectedColor(context.getImageData(0,0,w,h),cleanup),0,0);left=topY=0;}
+  if(cleanup?.enabled!==false&&cleanup){input=canvas(w,h);const context=input.getContext('2d');context.drawImage(source,x,y,w,h,0,0,w,h);context.putImageData(applyColorCleanup(context.getImageData(0,0,w,h),cleanup),0,0);left=topY=0;}
   const count=direction.startsWith('vertical_stack:')?Number(direction.split(':')[1]):1;
   const rotated=direction==='rotate_cw'||direction==='rotate_ccw';
   const out=canvas(rotated?h:w*count,rotated?w:Math.ceil(h/count)),ctx=out.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,out.width,out.height);
@@ -57,6 +57,6 @@ export function prepareFilteredCrop(source,region,hue,saturation){
   const [x,y,right,bottom]=region.bbox,w=right-x,h=bottom-y;
   if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
   const part=canvas(w,h),ctx=part.getContext('2d');ctx.drawImage(source,x,y,w,h,0,0,w,h);
-  if(region.color_cleanup)ctx.putImageData(removeSelectedColor(ctx.getImageData(0,0,w,h),region.color_cleanup),0,0);
+  if(region.color_cleanup)ctx.putImageData(applyColorCleanup(ctx.getImageData(0,0,w,h),region.color_cleanup),0,0);
   return prepareCrop(removeBlue(part,hue,saturation),{...region,color_cleanup:null,bbox:[0,0,w,h]});
 }
