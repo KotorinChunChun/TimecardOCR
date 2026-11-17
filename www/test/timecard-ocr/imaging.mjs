@@ -26,11 +26,21 @@ export function removeBlue(source,hue=[75,125],saturation=45){
   }
   ctx.putImageData(im,0,0);return out;
 }
-export function crop(source,box,direction='horizontal',cleanup=null){
-  const [x,y,right,bottom]=box,w=right-x,h=bottom-y;
+function checkedBox(source,[x,y,right,bottom]){
+  const w=right-x,h=bottom-y;
   if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
+  return [x,y,w,h];
+}
+// セル範囲だけを別Canvasへ写し、列の色除去を適用する。
+function cleanedRegion(source,[x,y,w,h],cleanup){
+  const out=canvas(w,h),ctx=out.getContext('2d');ctx.drawImage(source,x,y,w,h,0,0,w,h);
+  if(cleanup)ctx.putImageData(applyColorCleanup(ctx.getImageData(0,0,w,h),cleanup),0,0);
+  return out;
+}
+export function crop(source,box,direction='horizontal',cleanup=null){
+  const [x,y,w,h]=checkedBox(source,box);
   let input=source,left=x,topY=y;
-  if(cleanup?.enabled!==false&&cleanup){input=canvas(w,h);const context=input.getContext('2d');context.drawImage(source,x,y,w,h,0,0,w,h);context.putImageData(applyColorCleanup(context.getImageData(0,0,w,h),cleanup),0,0);left=topY=0;}
+  if(cleanup&&cleanup.enabled!==false){input=cleanedRegion(source,[x,y,w,h],cleanup);left=topY=0;}
   const count=direction.startsWith('vertical_stack:')?Number(direction.split(':')[1]):1;
   const rotated=direction==='rotate_cw'||direction==='rotate_ccw';
   const out=canvas(rotated?h:w*count,rotated?w:Math.ceil(h/count)),ctx=out.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,out.width,out.height);
@@ -54,9 +64,8 @@ export function prepareCrop(source,region,{paddingColor}={}){
 }
 // 青除去は画素単位なので、全画像に掛けてから切り出す場合と同じ結果をセル範囲の計算だけで得る。
 export function prepareFilteredCrop(source,region,hue,saturation){
-  const [x,y,right,bottom]=region.bbox,w=right-x,h=bottom-y;
-  if(x<0||y<0||right>source.width||bottom>source.height||w<1||h<1)throw Error('セルの範囲が画像外です。テンプレートを確認してください。');
-  const part=canvas(w,h),ctx=part.getContext('2d');ctx.drawImage(source,x,y,w,h,0,0,w,h);
-  if(region.color_cleanup)ctx.putImageData(applyColorCleanup(ctx.getImageData(0,0,w,h),region.color_cleanup),0,0);
-  return prepareCrop(removeBlue(part,hue,saturation),{...region,color_cleanup:null,bbox:[0,0,w,h]});
+  const box=checkedBox(source,region.bbox),part=cleanedRegion(source,box,region.color_cleanup),filtered=removeBlue(part,hue,saturation);
+  part.width=part.height=1;
+  const out=prepareCrop(filtered,{...region,color_cleanup:null,bbox:[0,0,box[2],box[3]]});
+  filtered.width=filtered.height=1;return out;
 }

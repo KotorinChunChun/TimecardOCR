@@ -1,7 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initializeWorker} from '../www/test/timecard-ocr/engine-client.mjs';
+import {initializeWorker,saveOCRAssets,hasOCRAssets} from '../www/test/timecard-ocr/engine-client.mjs';
+import {sha256Hex} from '../www/test/timecard-ocr/core.mjs';
 import {readFileSync} from 'node:fs';
+class FakeCache{
+  entries=new Map();puts=[];deletes=[];
+  async match(url){return this.entries.get(url)?.clone();}
+  async put(url,response){this.puts.push(url);this.entries.set(url,response);}
+  async delete(url){this.deletes.push(url);return this.entries.delete(url);}
+}
+const assetFile=async(path,text)=>{const bytes=new TextEncoder().encode(text);return {path,bytes:bytes.byteLength,sha256:await sha256Hex(bytes),mime:'application/octet-stream',data:bytes};};
+const urlOf=path=>'https://example.test/'+path;
+test('未保存の認識データだけを取得・検証して保存し、進捗を全体のバイト数で通知する',async()=>{
+  const files=[await assetFile('a.bin','abc'),await assetFile('b.bin','defgh')],cache=new FakeCache(),fetched=[],progress=[];
+  cache.entries.set(urlOf('a.bin'),new Response(files[0].data));
+  await saveOCRAssets(files,{cache,urlOf,fetchFile:async url=>{fetched.push(url);return new Response(files[1].data);},onProgress:(done,total)=>progress.push([done,total])});
+  assert.deepEqual(fetched,[urlOf('b.bin')]);assert.deepEqual(cache.puts,[urlOf('b.bin')]);assert.deepEqual(progress.at(-1),[8,8]);
+  assert.equal(new TextDecoder().decode(await (await cache.match(urlOf('b.bin'))).arrayBuffer()),'defgh');
+  assert.equal(await hasOCRAssets(files,{cache,urlOf}),true);assert.equal(await hasOCRAssets([...files,await assetFile('c.bin','x')],{cache,urlOf}),false);
+});
+test('台帳と一致しない取得結果・保存済みデータは保存せず、キャッシュから消して失敗にする',async()=>{
+  const file=await assetFile('a.bin','abc'),cache=new FakeCache();
+  await assert.rejects(saveOCRAssets([file],{cache,urlOf,fetchFile:async()=>new Response('abd')}),/検証に失敗/);assert.deepEqual(cache.puts,[]);
+  cache.entries.set(urlOf('a.bin'),new Response('xyz'));await assert.rejects(saveOCRAssets([file],{cache,urlOf,fetchFile:assert.fail}),/検証に失敗/);assert.equal(cache.entries.has(urlOf('a.bin')),false);
+  await assert.rejects(saveOCRAssets([file],{cache,urlOf,fetchFile:async()=>new Response('',{status:404})}),/取得できません: a\.bin/);
+});
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 test('一括は結合画像を渡し、旧Tesseractへの切替を残さない',()=>{
   const app=source('www/test/timecard-ocr/app.mjs'),html=source('www/test/timecard-ocr/index.html'),sw=source('www/test/timecard-ocr/sw.js');

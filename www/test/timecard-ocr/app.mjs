@@ -19,7 +19,7 @@ import {POINT_PADDING,imageLayout,imagePosition,nearestPoint,movePoint,pointName
 import {detectTableQuad,detectionImage} from './table-detector.mjs';
 import {gridTemplate,resizeSelectedGrid,selectIndexes,setColumnRange,reconcileCells,ocrTargets,mergeOCR,validateWorkCells,renameHeading,parseDefinition,sortColumnsByPosition} from './workflow.mjs';
 import {createGridEditor} from './grid-editor.mjs';
-import {initializeWorker} from './engine-client.mjs';
+import {initializeWorker,saveOCRAssets,hasOCRAssets} from './engine-client.mjs';
 import {bindImageDropZone} from './image-drop.mjs';
 import {buildWholeAtlas,ATLAS_REVISION} from './atlas.mjs';
 import {debounceTask,popupPosition,bindPaneSplitter,reviewSnapshot,reviewChanged,pageConfirmation,replacementTableText,clickInside,matchesReasonFilter} from './ui-tools.mjs';
@@ -28,9 +28,10 @@ let ocrManifestPromise;
 const readOCRManifest=()=>ocrManifestPromise??=fetch('./assets.json').then(response=>{if(!response.ok)throw Error('認識データ台帳を読み込めません。');return response.json();}).catch(error=>{ocrManifestPromise=null;throw error;});
 $('app-version').textContent='v'+VERSION;
 const confirmPage=pageConfirmation($('confirm-dialog'));
-const state={source:null,card:null,normalized:null,cardCal:null,cal:null,cardPoints:[],tablePoints:[],points:[],cells:[],selected:null,mode:'original',name:'',hash:'',worker:null,ready:false,engineSaved:false,engineChecked:false,busy:false,running:false,dirty:false,cardDirty:true,rangeDirty:true,geometryDirty:true,drag:null,activePoint:-1,pointOrigin:'manual',stage:1,rangeMode:'card',field:'number',column:0,row:0,axis:null,gridMode:'adjust',gridBase:null,previewKey:'',imageRevision:0,definitionDirty:false,selectedRows:[],selectedColumns:[],rowAnchor:0,columnAnchor:0,inputView:'crops',atlas:null,atlasKey:'',blueAtlas:null,blueAtlasKey:'',ocrPrevious:null,approvalMode:false,approvalSelection:new Set(),approvalUndo:null,approvalAnchor:null,gridUndo:null,legacy:false,lastOCRSettings:null,staleCells:[],fieldSnapshot:null,castTarget:"",castControlKey:"",castApprovalUndo:null,ocrOptions:ocrOptions(),gpuAvailable:false,gpuChecked:false,runtime:null,assetCheck:0};
+const state={source:null,card:null,normalized:null,cardCal:null,cal:null,cardPoints:[],tablePoints:[],points:[],cells:[],selected:null,mode:'original',name:'',hash:'',worker:null,ready:false,engineSaved:false,engineChecked:false,busy:false,running:false,dirty:false,cardDirty:true,rangeDirty:true,geometryDirty:true,drag:null,activePoint:-1,pointOrigin:'manual',stage:1,rangeMode:'card',field:'number',column:0,row:0,axis:null,gridMode:'adjust',gridBase:null,previewKey:'',imageRevision:0,definitionDirty:false,selectedRows:[],selectedColumns:[],rowAnchor:0,columnAnchor:0,inputView:'crops',atlas:null,atlasKey:'',blueAtlas:null,blueAtlasKey:'',ocrPrevious:null,approvalMode:false,approvalSelection:new Set(),approvalUndo:null,approvalAnchor:null,gridUndo:null,legacy:false,lastOCRSettings:null,staleCells:[],fieldSnapshot:null,castTarget:"",castControlKey:"",castApprovalUndo:null,ocrOptions:ocrOptions(),gpuAvailable:false,gpuChecked:false,runtime:null,runningSettings:null,assetCheck:0};
 const simple=()=>gridTemplate({name:'勤務表',size:[1000,1400],row_edges:Array.from({length:17},(_,i)=>Math.round(168+i*(1400-168)/16)),row_padding:6,confidence_threshold:.9,columns:[{name:'day',kind:'day',x:[0,120]},{name:'arrival',kind:'time',x:[120,410]},{name:'departure',kind:'time',x:[410,700]},{name:'subtotal',kind:'duration',x:[700,1000]}]});
-let template=await fetch('./template-original.json').then(response=>{if(!response.ok)throw Error('用紙定義を読み込めません。');return response.json();}).then(gridTemplate).catch(error=>{console.error(error);return simple();}),pendingInit=null,reviewBaseline=null,previewFrame=0,atlasSequence=0;
+const loadOriginalTemplate=()=>fetch('./template-original.json').then(response=>{if(!response.ok)throw Error('用紙定義を読み込めません。');return response.json();});
+let template=await loadOriginalTemplate().then(gridTemplate).catch(error=>{console.error(error);return simple();}),pendingInit=null,reviewBaseline=null,previewFrame=0,atlasSequence=0;
 const thumbnails=new Map(),editHistory=createEditHistory();
 let historySource=null,historyStage=0,restoringEdit=false,workspaceSplitter=null,resultSplitter=null;
 let cardQueue=null,queueSwitching=false,activeSourceFile=null;
@@ -48,6 +49,7 @@ function el(tag,text='',className=''){const e=document.createElement(tag);e.text
 function message(text,error=false){$('message').textContent=text;$('message').hidden=!text;$('message').classList.toggle('error',error);}
 const guard=fn=>(...args)=>Promise.resolve().then(()=>fn(...args)).then(value=>{recordEdit();return value;}).catch(error=>message(error.message||String(error),true));
 const registerServiceWorker=()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+const assetURL=path=>new URL(path,location.href).href;
 const pointSource=()=>state.stage===1?state.source:state.card;
 const pointMethod=()=>state.stage===1?'perspective':$('method').value;
 const pointEditing=()=>state.stage===1||state.stage===2&&state.rangeMode==='table';
@@ -70,8 +72,9 @@ function syncQueue(){
  $('queue-files').disabled=locked;for(const id of ['image-file','project-file','demo','demo-alignment'])$(id).disabled=locked||!!q;
  if(!q)return;const items=q.items(),current=q.current(),select=$('queue-select');
  const labels={pending:'待機',processing:'作業中',completed:'読取済み',failed:'読込エラー',skipped:'保留'};
- const options=items.map(item=>{const cells=item.id===current.id?state.cells:q.get(item.id).snapshot?.values.cells,progress=cardReadStatus(cells);const option=el('option',`${item.index+1}/${items.length} ${item.name} · ${item.status==='failed'?labels.failed:progress||labels[item.status]}`);option.value=item.id;return option;});
- select.replaceChildren(...options);select.value=current.id;select.disabled=locked;
+ const options=items.map(item=>{const cells=item.id===current.id?state.cells:q.get(item.id).snapshot?.values.cells,progress=cardReadStatus(cells);return [item.id,`${item.index+1}/${items.length} ${item.name} · ${item.status==='failed'?labels.failed:progress||labels[item.status]}`];}),signature=JSON.stringify(options);
+ if(select.dataset.options!==signature){select.replaceChildren(...options.map(([value,text])=>{const option=el('option',text);option.value=value;return option;}));select.dataset.options=signature;}
+ select.value=current.id;select.disabled=locked;
  $('queue-prev').disabled=locked||current.index===0;$('queue-next').disabled=locked||current.index===items.length-1;
  $('queue-close').disabled=locked;$('queue-export').disabled=locked||!items.some(item=>(item.id===current.id?state.cells:q.get(item.id).snapshot?.values.cells??[]).some(c=>!c.flags.includes('not_processed')));
 }
@@ -119,7 +122,7 @@ async function addQueueFiles(files){
 function exportQueue(){
  if(unsavedCell())throw Error('選択中のセルを保存してから書き出してください。');saveQueueCurrent();
  const items=cardQueue.items(),entries=items.map(item=>cardQueue.get(item.id)),rows=batchRows(entries);if(rows.length<2)throw Error('書き出せる表の結果がありません。');
- download(csv(rows),'timecards.csv','text/csv;charset=utf-8');const missing=entries.filter(entry=>!entry.snapshot?.values.cells?.length).length,unprocessed=rows.slice(1).filter(row=>row[10]).length,review=rows.slice(1).filter(row=>row[11]).length;
+ downloadCSV(rows,'timecards.csv');const missing=entries.filter(entry=>!entry.snapshot?.values.cells?.length).length,unprocessed=rows.slice(1).filter(row=>row[10]).length,review=rows.slice(1).filter(row=>row[11]).length;
  message(`書き出しました。未処理 ${unprocessed}セル・要確認 ${review}セル${missing?`・結果のない ${missing}枚は対象外`:''}。`);
 }
 
@@ -182,7 +185,7 @@ function renderTemplate(){
     if(index!==state.column)return;
     const row=el('div','','column-row'),top=el('div','','column-top'),name=document.createElement('input');name.value=c.name;name.setAttribute('aria-label',`${index+1}列目の名前`);name.maxLength=40;
     name.addEventListener('change',guard(()=>updateColumn(index,{name:name.value})));top.append(name);
-    const remove=el('button','削除','secondary');remove.type='button';remove.disabled=template.columns.length===1;remove.addEventListener('click',guard(()=>{const next=structuredClone(template);next.columns.splice(index,1);if(next.header_columns)next.header_columns=next.header_columns.filter(i=>i!==index).map(i=>i>index?i-1:i);applyNewTemplate(next);}));top.append(remove);row.append(top);
+    const remove=el('button','削除','secondary');remove.type='button';remove.disabled=template.columns.length===1;remove.addEventListener('click',guard(()=>{const next=clone(template);next.columns.splice(index,1);if(next.header_columns)next.header_columns=next.header_columns.filter(i=>i!==index).map(i=>i>index?i-1:i);applyNewTemplate(next);}));top.append(remove);row.append(top);
     const choices=el('div','','form-grid');
     for(const [key,title,options]of [['kind','種類',[['day','日'],['time','時刻'],['duration','時間数'],['text','文字']]],['direction','文字の向き',[['horizontal','横書き'],['rotate_cw','右90度'],['rotate_ccw','左90度'],['vertical_stack:2','縦積み2分割'],['vertical_stack:3','縦積み3分割']]]]){
       const l=el('label',title),select=document.createElement('select');select.setAttribute('aria-label',`${index+1}列目の${title}`);for(const [v,text]of options){const option=el('option',text);option.value=v;select.append(option);}if(!options.some(o=>o[0]===c[key])){const option=el('option',c[key]);option.value=c[key];select.append(option);}select.value=c[key];select.addEventListener('change',guard(()=>updateColumn(index,{[key]:select.value})));l.append(select);choices.append(l);
@@ -190,7 +193,7 @@ function renderTemplate(){
     row.append(choices);root.append(row);
   });
 }
-function updateColumn(index,change){const next=structuredClone(template);Object.assign(next.columns[index],change);if(change.x&&next.layout_version===2){next.columns[index].x1=change.x[0]/next.size[0];next.columns[index].x2=change.x[1]/next.size[0];}return applyNewTemplate(next);}
+function updateColumn(index,change){const next=clone(template);Object.assign(next.columns[index],change);if(change.x&&next.layout_version===2){next.columns[index].x1=change.x[0]/next.size[0];next.columns[index].x2=change.x[1]/next.size[0];}return applyNewTemplate(next);}
 
 function syncCardControls(){
  const field=template.card_fields.find(f=>f.key===state.field),box=field?.box;
@@ -511,19 +514,8 @@ async function installEngine({silent=false}={}){
     if(!('serviceWorker'in navigator)||!('caches'in globalThis))throw Error('HTTPSで開き、Service Worker・サイト保存を許可したブラウザーを使ってください。');
     // Cache APIへの保存はページがSWに制御されていなくても可能。強制再読込時に待ち続けない。
     await registerServiceWorker();
-    const manifest=await readOCRManifest(),files=requiredOCRAssets(manifest,state.ocrOptions,state.gpuAvailable),cache=await caches.open(CACHE),total=files.reduce((s,f)=>s+f.bytes,0);let done=0;
-    for(const file of files){
-      const url=new URL(file.path,location.href).href,cached=await cache.match(url);
-      let data;
-      if(!cached){
-        const response=await fetch(url,{cache:'no-store',credentials:'omit'});if(!response.ok)throw Error('エンジンを取得できません: '+file.path);
-        const reader=response.body.getReader(),chunks=[];let received=0;
-        for(;;){const part=await reader.read();if(part.done)break;chunks.push(part.value);received+=part.value.length;message(`エンジンを保存中… ${((done+received)/1000000).toFixed(1)} / ${(total/1000000).toFixed(1)} MB`);}
-        const joined=new Uint8Array(received);let offset=0;for(const part of chunks){joined.set(part,offset);offset+=part.length;}data=joined.buffer;
-      }else data=await cached.arrayBuffer();
-      if(data.byteLength!==file.bytes||await sha256Hex(data)!==file.sha256){await cache.delete(url);throw Error('取得ファイルの検証に失敗しました。もう一度エンジン保存を実行してください。');}
-      if(!cached)await cache.put(url,new Response(data,{headers:{'Content-Type':file.mime}}));done+=file.bytes;
-    }
+    const manifest=await readOCRManifest(),files=requiredOCRAssets(manifest,state.ocrOptions,state.gpuAvailable);
+    await saveOCRAssets(files,{cache:await caches.open(CACHE),urlOf:assetURL,fetchFile:url=>fetch(url,{cache:'no-store',credentials:'omit'}),onProgress:(done,total)=>message(`エンジンを保存中… ${(done/1000000).toFixed(1)} / ${(total/1000000).toFixed(1)} MB`)});
     state.engineSaved=true;state.engineChecked=true;sync();
     message('');
   }catch(error){state.engineSaved=false;state.engineChecked=true;throw error;}finally{setBusy(false);}
@@ -538,6 +530,7 @@ async function runOCR(selection={type:'all'}){
 }
 
 function download(data,name,type){const blob=data instanceof Blob?data:new Blob([data],{type}),url=URL.createObjectURL(blob),link=el('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+const downloadCSV=(rows,name)=>download(csv(rows),name,'text/csv;charset=utf-8');
 function cardInformation(){return Object.fromEntries(CARD_FIELDS.map(f=>[f.key,state.cells.find(c=>c.card_field===f.key)?.value??'']));}
 function metadata(){return {work_schema:2,ocr_options:state.ocrOptions,card_information:cardInformation(),name:state.name,source_sha256:state.hash,template,card_calibration:state.cardCal,calibration:state.cal,stage:state.stage,range_mode:state.rangeMode,field:state.field,card_points:state.cardPoints,table_points:state.tablePoints,card_dirty:state.cardDirty,range_dirty:state.rangeDirty,legacy:state.legacy,last_ocr_settings:state.lastOCRSettings,compare_blue:$('compare-blue').checked,input_view:state.inputView,cast_target:state.castTarget,created_at:new Date().toISOString()};}
 function warnExport(){const count=state.cells.filter(c=>displayReasons(c).length).length;if(count)message(`要確認${count}件を含めて書き出しました。`);}
@@ -581,14 +574,14 @@ $('demo').onclick=guard(demo);$('demo-alignment').onclick=guard(()=>demo({alignm
 for(const [id,stage]of [['step-card',1],['step-table',2],['step-grid',3],['step-ocr',4],['step-cast',5]])$(id).onclick=guard(()=>setStage(stage));
 $('method').onchange=()=>{if(state.stage!==2)return;state.points=[];state.tablePoints=[];state.rangeDirty=true;state.geometryDirty=true;state.previewKey='';draw();};
 $('undo-edit').onclick=()=>restoreEdit('undo');$('redo-edit').onclick=()=>restoreEdit('redo');
-$('undo-point').onclick=()=>{state.activePoint=state.points.length-2;changedPoints(state.points.slice(0,-1));recordEdit();};$('reset-points').onclick=()=>{state.activePoint=-1;changedPoints([]);recordEdit();};$('whole-image').onclick=()=>{const source=pointSource(),w=source.width-1,h=source.height-1;changedPoints(imageCorners(source.width,source.height,pointMethod()));recordEdit();};
+$('undo-point').onclick=()=>{state.activePoint=state.points.length-2;changedPoints(state.points.slice(0,-1));recordEdit();};$('reset-points').onclick=()=>{state.activePoint=-1;changedPoints([]);recordEdit();};$('whole-image').onclick=()=>{const source=pointSource();changedPoints(imageCorners(source.width,source.height,pointMethod()));recordEdit();};
 for(const id of ['card-width','card-height'])$(id).oninput=()=>{if(state.source){state.cardDirty=true;state.geometryDirty=true;state.dirty=true;state.previewKey='';draw();}};
 function setRangeMode(mode){state.rangeMode=mode;state.points=clone(state.tablePoints);state.previewKey='';$('settings-menu').open=false;syncCardControls();draw();recordEdit();}
 for(const [id,mode]of [['range-card','card'],['range-table','table']])$(id).onclick=()=>setRangeMode(mode);$('card-field-select').onchange=()=>{state.field=$('card-field-select').value;syncCardControls();draw();recordEdit();};
 document.querySelectorAll('[data-card-box]').forEach(e=>e.oninput=guard(()=>{const fields=clone(template.card_fields),f=fields.find(f=>f.key===state.field);f.box??=[0,0,1,1];f.box[Number(e.dataset.cardBox)]=Number(e.value)/100;changeCardFields(fields);}));$('field-angle').oninput=guard(()=>{const fields=clone(template.card_fields);fields.find(f=>f.key===state.field).rotation_degrees=Number($('field-angle').value);changeCardFields(fields);});$('clear-card-field').onclick=()=>{const fields=clone(template.card_fields);fields.find(f=>f.key===state.field).box=null;changeCardFields(fields);};
 async function saveColumnColor(name,settings){const next=clone(template),column=next.columns.find(c=>c.name===name);if(settings)column.color_cleanup=settings;else delete column.color_cleanup;if(await applyNewTemplate(next)===false)return false;inputPreview.cancel();state.inputView='crops';renderTable();draw();recordEdit();return true;}
 $('open-color-editor').onclick=guard(()=>{const column=template.columns[state.column],cells=state.cells.filter(c=>c.row_index>0&&c.column_name===column.name);imageTools.openColor({column,cells,selected:cells.find(c=>c.id===state.selected)?.id??cells.find(c=>!c.is_header_row)?.id,source:state.normalized,label:columnChoiceLabel(column,state.column),cellLabel:c=>cellTitle(c)});});
-$('preset').onchange=guard(async()=>{if($('preset').value==='current')return;return applyNewTemplate($('preset').value==='simple'?simple():await(await fetch('./template-original.json')).json());});
+$('preset').onchange=guard(async()=>{if($('preset').value==='current')return;return applyNewTemplate($('preset').value==='simple'?simple():await loadOriginalTemplate());});
 function updateCounts(){if($('rows').value===''||$('columns-count').value==='')return;const rows=Number($('rows').value),columns=Number($('columns-count').value);if(rows!==template.row_edges.length-1&&!state.selectedRows.length||columns!==template.columns.length&&!state.selectedColumns.length)throw Error('数を変更する行または列を選択してください。');const rowChanged=rows!==template.row_edges.length-1,columnChanged=columns!==template.columns.length,next=resizeSelectedGrid(template,rows,columns,{rows:state.selectedRows,columns:state.selectedColumns});if(changeGrid(next.template,{deferHistory:true})){state.selectedRows=next.rows;state.selectedColumns=next.columns;if(columnChanged&&next.columns.length){state.column=state.columnAnchor=next.columns[0];state.axis='column';}if(rowChanged&&next.rows.length){state.row=state.rowAnchor=next.rows[0];if(!columnChanged)state.axis='row';}syncGridControls();draw();recordEdit();}}
 for(const id of ['rows','columns-count']){$(id).oninput=guard(updateCounts);$(id).onblur=syncGridControls;}document.querySelectorAll('[data-count]').forEach(b=>b.onclick=guard(()=>{const selected=b.dataset.count==='rows'?state.selectedRows:state.selectedColumns;if(!selected.length)throw Error('追加・削除する行または列を選択してください。');$(b.dataset.count).value=Math.max(1,Number($(b.dataset.count).value)+Number(b.dataset.delta)*selected.length);updateCounts();}));
 $('selected-column').onchange=()=>setSelectedColumn(Number($('selected-column').value));$('detail-column').onchange=()=>{setSelectedColumn(Number($('detail-column').value));renderTemplate();};$('selected-row').onchange=()=>setSelectedRow(Number($('selected-row').value));$('heading-column').onchange=()=>setSelectedColumn(Number($('heading-column').value));
@@ -617,7 +610,7 @@ $('reset-cast-rules').onclick=guard(()=>applyCastConfig({...defaultCastConfig($(
 $('add-cast-rule').onclick=guard(()=>addCastRule().focus());$('copy-cast-rules').onclick=guard(copyCastRules);
 $('approve-filtered').onclick=guard(()=>approveCurrent());$('approve-selected').onclick=guard(()=>approveCurrent(true));$('approval-mode').onclick=()=>{state.approvalMode=true;state.approvalSelection.clear();renderTable();};$('approval-exit').onclick=()=>{state.approvalMode=false;state.approvalSelection.clear();renderTable();};$('approval-select-all').onclick=()=>{state.approvalSelection=new Set(eligibleCells().map(c=>c.id));renderTable();};$('undo-approval').onclick=guard(()=>{if(state.busy||unsavedCell())return;if(castStage()){state.cells=undoCastApproval(state.cells,state.castApprovalUndo);state.castApprovalUndo=null;}else{state.cells=undoApproval(state.cells,state.approvalUndo);state.approvalUndo=null;}state.dirty=true;renderTable();if(state.selected)selectCell(state.selected);message('一括承認を取り消しました。');});
 $('save-cell').onclick=guard(()=>saveCell());$('save-next').onclick=guard(()=>saveCell(true));for(const id of ['corrected-value','correction-reason','reviewed'])$(id).addEventListener('input',syncApprovalControls);
-$('export-table').onclick=()=>{download(csv(castStage()?castTableRows(state.cells,template):tableRows(state.cells,template)),castStage()?'timecard-cast.csv':'timecard.csv','text/csv;charset=utf-8');warnExport();};$('export-card-info').onclick=()=>download(csv([['項目','値'],...CARD_FIELDS.map(f=>[f.label,castStage()?state.cells.find(c=>c.card_field===f.key)?.cast?.value??'':cardInformation()[f.key]])]),'timecard-card-information.csv','text/csv;charset=utf-8');$('export-evidence').onclick=()=>{download(csv(castStage()?castEvidenceRows(state.cells):evidenceRows(state.cells)),castStage()?'timecard-cast-evidence.csv':'timecard-evidence.csv','text/csv;charset=utf-8');warnExport();};$('export-sqlite').onclick=guard(async()=>{download(await sqliteBytes(state.cells,metadata()),'timecard.sqlite','application/vnd.sqlite3');warnExport();});$('save-project').onclick=guard(saveProject);$('project-file').onchange=guard(e=>restoreProject(e.target.files[0]));
+$('export-table').onclick=guard(()=>{downloadCSV(castStage()?castTableRows(state.cells,template):tableRows(state.cells,template),castStage()?'timecard-cast.csv':'timecard.csv');warnExport();});$('export-card-info').onclick=guard(()=>{const info=cardInformation();downloadCSV([['項目','値'],...CARD_FIELDS.map(f=>[f.label,castStage()?state.cells.find(c=>c.card_field===f.key)?.cast?.value??'':info[f.key]])],'timecard-card-information.csv');});$('export-evidence').onclick=guard(()=>{downloadCSV(castStage()?castEvidenceRows(state.cells):evidenceRows(state.cells),castStage()?'timecard-cast-evidence.csv':'timecard-evidence.csv');warnExport();});$('export-sqlite').onclick=guard(async()=>{download(await sqliteBytes(state.cells,metadata()),'timecard.sqlite','application/vnd.sqlite3');warnExport();});$('save-project').onclick=guard(saveProject);$('project-file').onchange=guard(e=>restoreProject(e.target.files[0]));
 $('clear-engine').onclick=guard(async()=>{if(!await confirmPage('このブラウザーに保存した認識データを削除します。再取得が必要になります。'))return;stopWorker();await caches.delete(CACHE);state.engineSaved=false;state.engineChecked=true;sync();});
 workspaceSplitter=bindPaneSplitter(document.querySelector('.workspace'),$('workspace-splitter'),()=>draw(),{storageKey:()=>state.stage>=4?`timecard-stage-${state.stage}-pane-v2`:'timecard-pane-ratio',initial:()=>state.stage>=4?.27:.5});resultSplitter=bindPaneSplitter($('ocr-result-area'),$('review-splitter'),()=>updateImageFocus(),{property:'--review-ratio',storageKey:()=>`timecard-stage-${state.stage}-review-v2`,initial:.8});
 $('atlas-canvas').onclick=guard(e=>selectImageCell(e,'atlas'));$('ocr-card-canvas').onclick=guard(e=>selectImageCell(e,'card'));const focusObserver=new ResizeObserver(()=>updateImageFocus());focusObserver.observe($('atlas-canvas'));focusObserver.observe($('ocr-card-canvas'));
@@ -636,7 +629,7 @@ function syncModelControls(){
 }
 async function refreshEngineAvailability(){
  const check=++state.assetCheck;state.engineChecked=false;state.engineSaved=false;sync();
- try{const manifest=await readOCRManifest(),files=requiredOCRAssets(manifest,state.ocrOptions,state.gpuAvailable),cache=await caches.open(CACHE),saved=await Promise.all(files.map(f=>cache.match(new URL(f.path,location.href).href)));if(check!==state.assetCheck)return;state.engineSaved=saved.every(Boolean);state.engineChecked=true;document.querySelector('#engine-panel > span').textContent=`${ocrProfile(state.ocrOptions.profile).label}の認識データを保存（約${assetMegabytes(files)}MB）`;sync();}
+ try{const manifest=await readOCRManifest(),files=requiredOCRAssets(manifest,state.ocrOptions,state.gpuAvailable),saved=await hasOCRAssets(files,{cache:await caches.open(CACHE),urlOf:assetURL});if(check!==state.assetCheck)return;state.engineSaved=saved;state.engineChecked=true;document.querySelector('#engine-panel > span').textContent=`${ocrProfile(state.ocrOptions.profile).label}の認識データを保存（約${assetMegabytes(files)}MB）`;sync();}
  catch(error){if(check!==state.assetCheck)return;state.engineSaved=false;state.engineChecked=true;sync();message(error.message,true);}
 }
 async function changeOCROptions(){
